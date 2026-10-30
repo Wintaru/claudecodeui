@@ -51,10 +51,23 @@ function CopyButton({ text, label, t }: { text: string; label: string; t: TFunct
 }
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
+  const [isOpen, setIsOpen] = useState(true);
   return (
     <section className="space-y-1">
-      <h4 className="px-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground/70">{title}</h4>
-      {children}
+      <h4>
+        <button
+          type="button"
+          onClick={() => setIsOpen((previous) => !previous)}
+          aria-expanded={isOpen}
+          className="flex w-full items-center gap-1 rounded px-1 text-left text-[10px] font-medium uppercase tracking-wide text-muted-foreground/70 hover:text-foreground"
+        >
+          {isOpen
+            ? <ChevronDown className="h-3 w-3 flex-shrink-0" aria-hidden />
+            : <ChevronRight className="h-3 w-3 flex-shrink-0" aria-hidden />}
+          {title}
+        </button>
+      </h4>
+      {isOpen && children}
     </section>
   );
 }
