@@ -416,9 +416,12 @@ function ChatInterface({
   }), [pendingPermissionRequests, handlePermissionDecision]);
 
   // Lets markdown image paths in the transcript resolve against this project.
+  // A split pane gets `onFileOpen` only when its project is the main pane's.
+  const canOpenFiles = paneRole === 'main' || Boolean(onFileOpen);
   const markdownWorkspaceValue = useMemo(() => ({
     projectId: selectedProject?.projectId ?? null,
-  }), [selectedProject?.projectId]);
+    canOpenFiles,
+  }), [canOpenFiles, selectedProject?.projectId]);
 
   // Lets a workflow card fetch its agents' timelines for this session.
   const transcriptSessionValue = useMemo(() => ({ sessionId: currentSessionId }), [currentSessionId]);
