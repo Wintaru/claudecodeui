@@ -536,6 +536,9 @@ export function useChatSessionState({
     if (!container) return;
 
     const nearBottom = isNearBottom();
+    // Set the ref now: a deferred scroll-to-bottom timer can fire before the
+    // effect that mirrors the state into it runs.
+    isUserScrolledUpRef.current = !nearBottom;
     setIsUserScrolledUp(!nearBottom);
     scrollPositionRef.current = {
       height: container.scrollHeight,
@@ -937,6 +940,8 @@ export function useChatSessionState({
 
         if (targetElement) {
           targetElement.scrollIntoView({ block: 'center', behavior: 'smooth' });
+          isUserScrolledUpRef.current = true;
+          setIsUserScrolledUp(true);
           targetElement.classList.add('search-highlight-flash');
           setTimeout(() => targetElement.classList.remove('search-highlight-flash'), 4000);
           searchScrollTimerRef.current = null;
@@ -1014,7 +1019,7 @@ export function useChatSessionState({
         }
       }, 50);
     }
-  }, [chatMessages.length, isActive, isLoadingMoreMessages, isUserScrolledUp, scrollToBottom]);
+  }, [chatMessages, isActive, isLoadingMoreMessages, isUserScrolledUp, scrollToBottom]);
 
   useEffect(() => {
     const container = scrollContainerRef.current;

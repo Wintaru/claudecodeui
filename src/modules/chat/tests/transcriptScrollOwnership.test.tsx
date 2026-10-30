@@ -201,6 +201,78 @@ describe('deferred scroll-to-bottom', () => {
 
     expect(container.writes).toContain(container.scrollHeight);
   });
+
+  it('follows a streamed reply that grows in place', async () => {
+    const streamed = (content: string): NormalizedMessage => ({
+      ...buildMessage(1, '2026-01-01T00:00:01.000Z'),
+      id: `__streaming_${SESSION_A}`,
+      kind: 'stream_delta',
+      content,
+    } as NormalizedMessage);
+    const messages = new Map<string, NormalizedMessage[]>([
+      [SESSION_A, [buildMessage(0, '2026-01-01T00:00:00.000Z'), streamed('Hel')]],
+    ]);
+    const store = createStore(messages);
+    const { result, rerender } = await renderChatSessionState({
+      session: { id: SESSION_A } as ProjectSession,
+      store,
+    });
+
+    const container = createContainer(5000, 500);
+    (result.current.scrollContainerRef as { current: HTMLDivElement | null }).current = container.element;
+    act(() => {
+      vi.advanceTimersByTime(200);
+    });
+    container.writes.length = 0;
+
+    // More text replaces the streaming row: the count of rows does not change.
+    messages.set(SESSION_A, [messages.get(SESSION_A)![0], streamed('Hello, world')]);
+    act(() => {
+      rerender({ session: { id: SESSION_A } as ProjectSession });
+    });
+    act(() => {
+      vi.advanceTimersByTime(200);
+    });
+
+    expect(container.writes).toContain(container.scrollHeight);
+  });
+
+  it('does not follow a growing reply after the user scrolls up', async () => {
+    const streamed = (content: string): NormalizedMessage => ({
+      ...buildMessage(1, '2026-01-01T00:00:01.000Z'),
+      id: `__streaming_${SESSION_A}`,
+      kind: 'stream_delta',
+      content,
+    } as NormalizedMessage);
+    const messages = new Map<string, NormalizedMessage[]>([
+      [SESSION_A, [buildMessage(0, '2026-01-01T00:00:00.000Z'), streamed('Hel')]],
+    ]);
+    const store = createStore(messages);
+    const { result, rerender } = await renderChatSessionState({
+      session: { id: SESSION_A } as ProjectSession,
+      store,
+    });
+
+    const container = createContainer(5000, 500);
+    (result.current.scrollContainerRef as { current: HTMLDivElement | null }).current = container.element;
+    act(() => {
+      vi.advanceTimersByTime(200);
+    });
+    act(() => {
+      result.current.setIsUserScrolledUp(true);
+    });
+    container.writes.length = 0;
+
+    messages.set(SESSION_A, [messages.get(SESSION_A)![0], streamed('Hello, world')]);
+    act(() => {
+      rerender({ session: { id: SESSION_A } as ProjectSession });
+    });
+    act(() => {
+      vi.advanceTimersByTime(200);
+    });
+
+    assert.deepEqual(container.writes, []);
+  });
 });
 
 describe('search jump ownership', () => {
