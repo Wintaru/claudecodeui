@@ -96,8 +96,8 @@ test('a fork replaces the pane it came from', () => {
 });
 
 test('restores stored panes and ignores bad storage', () => {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(['a', 'a', 7, 'b', 'c', 'd']));
-  assert.deepEqual(renderSplitPanes('main').result.current.splitSessionIds, ['a', 'b', 'c']);
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(['a', 'a', 7, 'b', 'c']));
+  assert.deepEqual(renderSplitPanes('main').result.current.splitSessionIds, ['a', 'b']);
 
   localStorage.setItem(STORAGE_KEY, '{not json');
   assert.deepEqual(renderSplitPanes('main').result.current.splitSessionIds, []);

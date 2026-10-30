@@ -94,8 +94,8 @@ test('activity in a split pane does not mark it unread', async () => {
   assert.equal(result.current.sidebarSharedProps.attentionSessionIds.has('other-session'), true);
 });
 
-test('a split pane resolves a session past the loaded pages, and closes on an unknown one', async () => {
-  localStorage.setItem('cloudcli-split-panes', JSON.stringify(['older-session', 'gone-session', 'flaky-session']));
+const renderWithStoredPanes = async (storedSessionIds: string[]) => {
+  localStorage.setItem('cloudcli-split-panes', JSON.stringify(storedSessionIds));
   sessionDetailsResponse.mockImplementation(async (sessionId: string) => {
     if (sessionId === 'older-session') {
       return { ok: true, json: async () => ({ data: { summary: 'Older', provider: 'claude', project: { projectId: 'project-1' } } }) };
@@ -105,7 +105,7 @@ test('a split pane resolves a session past the loaded pages, and closes on an un
   projectsResponse.mockResolvedValue({ ok: true, json: async () => [project] });
   const { useProjectsState } = await import('@/modules/project-workspace/hooks/useProjectsState');
 
-  const { result } = renderHook(() =>
+  return renderHook(() =>
     useProjectsState({
       sessionId: 'main-session',
       navigate: vi.fn(),
@@ -114,11 +114,20 @@ test('a split pane resolves a session past the loaded pages, and closes on an un
       isSessionProcessing: () => false,
     }),
   );
+};
+
+test('a split pane closes on an unknown session and stays on a failed lookup', async () => {
+  const { result } = await renderWithStoredPanes(['gone-session', 'flaky-session']);
 
   // A failure other than "not found" keeps the pane, to try again later.
   await waitFor(() => {
-    assert.deepEqual(result.current.splitSessionIds, ['older-session', 'flaky-session']);
+    assert.deepEqual(result.current.splitSessionIds, ['flaky-session']);
   });
+});
+
+test('a split pane resolves a session past the loaded pages', async () => {
+  const { result } = await renderWithStoredPanes(['older-session']);
+
   await waitFor(() => {
     const [target] = result.current.splitPaneTargets;
     assert.equal(target.session?.summary, 'Older');
