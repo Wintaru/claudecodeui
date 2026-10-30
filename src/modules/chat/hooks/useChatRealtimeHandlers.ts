@@ -16,8 +16,17 @@ const hasActionablePermissionRequests = (requests: Array<{ toolName?: unknown }>
   return Array.isArray(requests) && requests.some((request) => isActionablePermissionRequest(request));
 };
 
+/**
+ * Every chat view on the page receives every frame. The `main` view (the one
+ * the address names) also keeps the app-wide effects for every session: the
+ * sidebar's processing state, the sounds and the title indicator. A `split`
+ * view handles only frames for its own session, so those effects run once.
+ */
+export type ChatPaneRole = 'main' | 'split';
+
 type UseChatRealtimeHandlersArgs = {
   isActive: boolean;
+  paneRole?: ChatPaneRole;
   subscribe: (listener: (event: ServerEvent) => void) => () => void;
   provider: LLMProvider;
   selectedSession: ProjectSession | null;
@@ -65,6 +74,7 @@ type UseChatRealtimeHandlersArgs = {
  */
 export function useChatRealtimeHandlers({
   isActive,
+  paneRole = 'main',
   subscribe,
   provider,
   selectedSession,
@@ -103,12 +113,17 @@ export function useChatRealtimeHandlers({
   }, [pendingPermissionRequests]);
 
   useEffect(() => {
+    const isMainPane = paneRole === 'main';
+    const markProcessing = isMainPane ? onSessionProcessing : undefined;
+    const markIdle = isMainPane ? onSessionIdle : undefined;
+    const markBackground = isMainPane ? onSessionBackground : undefined;
+
     // What a session that has finished responding is left with: the tasks it
     // launched that are still running, or nothing, which marks it idle. The
     // store's records are what the transcript's cards fold their live status
     // from, so this reads the same answer they draw.
     const reportRemainingBackgroundWork = (sid: string) => {
-      onSessionBackground?.(sid, collectRunningBackgroundTasks(normalizedToChatMessages(sessionStore.getMessages(sid))));
+      markBackground?.(sid, collectRunningBackgroundTasks(normalizedToChatMessages(sessionStore.getMessages(sid))));
     };
 
     // Writes a session's buffered stream text into the store and clears its
@@ -135,6 +150,9 @@ export function useChatRealtimeHandlers({
 
       const activeViewSessionId = activeViewSessionIdRef.current;
       const sid = (typeof msg.sessionId === 'string' && msg.sessionId) || activeViewSessionId;
+      if (!isMainPane && sid !== activeViewSessionId) {
+        return;
+      }
 
       // Record replay progress for every sequenced live event.
       if (sid && typeof msg.seq === 'number') {
@@ -165,11 +183,11 @@ export function useChatRealtimeHandlers({
           if (!sid) return;
 
           if (msg.isProcessing) {
-            onSessionProcessing?.(sid);
+            markProcessing?.(sid);
           } else {
             // Idle ack: ignore it if a newer request started after the
             // subscribe was sent — the ack describes the older state.
-            onSessionIdle?.(sid, {
+            markIdle?.(sid, {
               ifStartedBefore: statusCheckSentAtRef.current.get(sid),
             });
           }
@@ -231,7 +249,7 @@ export function useChatRealtimeHandlers({
             // already settled, and idling here would drop a response in
             // flight on that session.
             if (msg.code !== 'NO_SUCH_TASK' && msg.code !== 'TASK_ID_REQUIRED') {
-              onSessionIdle?.(sid);
+              markIdle?.(sid);
             }
             sessionStore.appendRealtime(sid, {
               id: `protocol_error_${Date.now()}`,
@@ -320,7 +338,7 @@ export function useChatRealtimeHandlers({
           if (sid && !msg.aborted) {
             reportRemainingBackgroundWork(sid);
           } else {
-            onSessionIdle?.(sid);
+            markIdle?.(sid);
           }
           if (sid === activeViewSessionId) {
             pendingPermissionRequestsRef.current = [];
@@ -334,7 +352,7 @@ export function useChatRealtimeHandlers({
           }
 
           // Celebrate only successful runs (failed runs end with success: false).
-          if (msg.success !== false) {
+          if (isMainPane && msg.success !== false) {
             showCompletionTitleIndicator();
             void playChatCompletionSound();
           }
@@ -355,7 +373,7 @@ export function useChatRealtimeHandlers({
 
         case 'permission_request': {
           if (!msg.requestId) break;
-          if (isActionablePermissionRequest({ toolName: msg.toolName })) {
+          if (isMainPane && isActionablePermissionRequest({ toolName: msg.toolName })) {
             void playNotificationSound();
           }
 
@@ -376,7 +394,7 @@ export function useChatRealtimeHandlers({
             }
           }
           if (sid) {
-            onSessionProcessing?.(sid);
+            markProcessing?.(sid);
           }
           break;
         }
@@ -405,7 +423,7 @@ export function useChatRealtimeHandlers({
               setTokenBudget(msg.tokenBudget as Record<string, unknown>);
             }
           } else if (msg.text && sid) {
-            onSessionProcessing?.(sid, {
+            markProcessing?.(sid, {
               statusText: msg.text as string,
               canInterrupt: msg.canInterrupt !== false,
             });
@@ -444,6 +462,7 @@ export function useChatRealtimeHandlers({
 
     return subscribe(handleEvent);
   }, [
+    paneRole,
     subscribe,
     provider,
     selectedSession,

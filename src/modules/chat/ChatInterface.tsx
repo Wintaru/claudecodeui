@@ -19,7 +19,7 @@ import type {
 import { useChatProviderState } from '@/modules/chat/hooks/useChatProviderState';
 import { useScheduledMessages } from '@/modules/chat/composer/useScheduledMessages';
 import { useChatSessionState } from '@/modules/chat/hooks/useChatSessionState';
-import { useChatRealtimeHandlers } from '@/modules/chat/hooks/useChatRealtimeHandlers';
+import { useChatRealtimeHandlers, type ChatPaneRole } from '@/modules/chat/hooks/useChatRealtimeHandlers';
 import { useChatComposerState } from '@/modules/chat/hooks/useChatComposerState';
 import { useSessionStore } from '@/modules/chat/hooks/useSessionStore';
 import {
@@ -32,6 +32,10 @@ import CommandResultModal from '@/modules/chat/modals/CommandResultModal';
 
 type ChatInterfaceProps = {
   isActive: boolean;
+  /** `split` for a pane beside the main chat; see `ChatPaneRole`. */
+  paneRole?: ChatPaneRole;
+  /** True while more than one chat pane shows, so Escape stops only the focused pane. */
+  isSplitView?: boolean;
   selectedProject: Project | null;
   selectedSession: ProjectSession | null;
   ws: WebSocket | null;
@@ -56,6 +60,8 @@ type ChatInterfaceProps = {
  */
 function ChatInterface({
   isActive,
+  paneRole = 'main',
+  isSplitView = false,
   selectedProject,
   selectedSession,
   ws,
@@ -283,6 +289,7 @@ function ChatInterface({
 
   useChatRealtimeHandlers({
     isActive,
+    paneRole,
     subscribe,
     provider,
     selectedSession,
@@ -322,7 +329,10 @@ function ChatInterface({
     });
   }, [setInput, textareaRef]);
 
-  usePaletteOpsRegister({ insertComposerText });
+  // The palette has one composer target, so only the main pane registers.
+  usePaletteOpsRegister(paneRole === 'main' ? { insertComposerText } : {});
+
+  const paneRootRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!canAbortSession) {
@@ -331,6 +341,9 @@ function ChatInterface({
 
     const handleGlobalEscape = (event: KeyboardEvent) => {
       if (event.key !== 'Escape' || event.repeat || event.defaultPrevented) {
+        return;
+      }
+      if (isSplitView && !paneRootRef.current?.contains(document.activeElement)) {
         return;
       }
 
@@ -342,7 +355,7 @@ function ChatInterface({
     return () => {
       document.removeEventListener('keydown', handleGlobalEscape, { capture: true });
     };
-  }, [canAbortSession, handleAbortSession]);
+  }, [canAbortSession, handleAbortSession, isSplitView]);
 
   useEffect(() => {
     return () => {
@@ -456,7 +469,7 @@ function ChatInterface({
 
   return (
     <PermissionContext.Provider value={permissionContextValue}>
-      <div className="flex h-full min-h-0 flex-col">
+      <div ref={paneRootRef} className="flex h-full min-h-0 flex-col">
         <MarkdownWorkspaceContext.Provider value={markdownWorkspaceValue}>
           <TranscriptSessionContext.Provider value={transcriptSessionValue}>
             <ChatMessagesPane
