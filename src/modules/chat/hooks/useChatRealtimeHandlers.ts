@@ -17,16 +17,20 @@ const hasActionablePermissionRequests = (requests: Array<{ toolName?: unknown }>
 };
 
 /**
- * Every chat view on the page receives every frame. The `main` view (the one
- * the address names) also keeps the app-wide effects for every session: the
- * sidebar's processing state, the sounds and the title indicator. A `split`
- * view handles only frames for its own session, so those effects run once.
+ * Every chat view on the page receives every frame. A `split` view handles
+ * only frames for its own session. The `main` view (the one the address
+ * names) plays the sounds and the title indicator for every session, so they
+ * run once. The sidebar's processing state of a session is kept by the view
+ * that shows it, which holds its full history and sent its subscribe; the
+ * main view also keeps it for sessions that no view shows.
  */
 export type ChatPaneRole = 'main' | 'split';
 
 type UseChatRealtimeHandlersArgs = {
   isActive: boolean;
   paneRole?: ChatPaneRole;
+  /** Main view only: sessions that a split view shows and keeps the state of. */
+  splitPaneSessionIds?: ReadonlySet<string>;
   subscribe: (listener: (event: ServerEvent) => void) => () => void;
   provider: LLMProvider;
   selectedSession: ProjectSession | null;
@@ -75,6 +79,7 @@ type UseChatRealtimeHandlersArgs = {
 export function useChatRealtimeHandlers({
   isActive,
   paneRole = 'main',
+  splitPaneSessionIds,
   subscribe,
   provider,
   selectedSession,
@@ -102,6 +107,8 @@ export function useChatRealtimeHandlers({
   activeViewSessionIdRef.current = selectedSession?.id || currentSessionId || null;
   const isActiveRef = useRef(isActive);
   isActiveRef.current = isActive;
+  const splitPaneSessionIdsRef = useRef(splitPaneSessionIds);
+  splitPaneSessionIdsRef.current = splitPaneSessionIds;
 
   // Keep the latest pending-permission snapshot available to the websocket
   // listener so back-to-back permission events can dedupe and re-arm the
@@ -114,16 +121,25 @@ export function useChatRealtimeHandlers({
 
   useEffect(() => {
     const isMainPane = paneRole === 'main';
-    const markProcessing = isMainPane ? onSessionProcessing : undefined;
-    const markIdle = isMainPane ? onSessionIdle : undefined;
-    const markBackground = isMainPane ? onSessionBackground : undefined;
+    const keepsSessionState = (sessionId: string | null | undefined) => (
+      !isMainPane || !sessionId || !splitPaneSessionIdsRef.current?.has(sessionId)
+    );
+    const markProcessing = (...args: Parameters<MarkSessionProcessing>) => {
+      if (keepsSessionState(args[0])) onSessionProcessing?.(...args);
+    };
+    const markIdle = (...args: Parameters<MarkSessionIdle>) => {
+      if (keepsSessionState(args[0])) onSessionIdle?.(...args);
+    };
+    const markBackground = (...args: Parameters<MarkSessionBackground>) => {
+      if (keepsSessionState(args[0])) onSessionBackground?.(...args);
+    };
 
     // What a session that has finished responding is left with: the tasks it
     // launched that are still running, or nothing, which marks it idle. The
     // store's records are what the transcript's cards fold their live status
     // from, so this reads the same answer they draw.
     const reportRemainingBackgroundWork = (sid: string) => {
-      markBackground?.(sid, collectRunningBackgroundTasks(normalizedToChatMessages(sessionStore.getMessages(sid))));
+      markBackground(sid, collectRunningBackgroundTasks(normalizedToChatMessages(sessionStore.getMessages(sid))));
     };
 
     // Writes a session's buffered stream text into the store and clears its
@@ -151,6 +167,10 @@ export function useChatRealtimeHandlers({
       const activeViewSessionId = activeViewSessionIdRef.current;
       const sid = (typeof msg.sessionId === 'string' && msg.sessionId) || activeViewSessionId;
       if (!isMainPane && sid !== activeViewSessionId) {
+        return;
+      }
+      // A protocol error that names no session is shown once, in the main view.
+      if (!isMainPane && msg.kind === 'protocol_error' && typeof msg.sessionId !== 'string') {
         return;
       }
 
@@ -183,11 +203,11 @@ export function useChatRealtimeHandlers({
           if (!sid) return;
 
           if (msg.isProcessing) {
-            markProcessing?.(sid);
+            markProcessing(sid);
           } else {
             // Idle ack: ignore it if a newer request started after the
             // subscribe was sent — the ack describes the older state.
-            markIdle?.(sid, {
+            markIdle(sid, {
               ifStartedBefore: statusCheckSentAtRef.current.get(sid),
             });
           }
@@ -249,7 +269,7 @@ export function useChatRealtimeHandlers({
             // already settled, and idling here would drop a response in
             // flight on that session.
             if (msg.code !== 'NO_SUCH_TASK' && msg.code !== 'TASK_ID_REQUIRED') {
-              markIdle?.(sid);
+              markIdle(sid);
             }
             sessionStore.appendRealtime(sid, {
               id: `protocol_error_${Date.now()}`,
@@ -338,7 +358,7 @@ export function useChatRealtimeHandlers({
           if (sid && !msg.aborted) {
             reportRemainingBackgroundWork(sid);
           } else {
-            markIdle?.(sid);
+            markIdle(sid);
           }
           if (sid === activeViewSessionId) {
             pendingPermissionRequestsRef.current = [];
@@ -394,7 +414,7 @@ export function useChatRealtimeHandlers({
             }
           }
           if (sid) {
-            markProcessing?.(sid);
+            markProcessing(sid);
           }
           break;
         }
@@ -423,7 +443,7 @@ export function useChatRealtimeHandlers({
               setTokenBudget(msg.tokenBudget as Record<string, unknown>);
             }
           } else if (msg.text && sid) {
-            markProcessing?.(sid, {
+            markProcessing(sid, {
               statusText: msg.text as string,
               canInterrupt: msg.canInterrupt !== false,
             });

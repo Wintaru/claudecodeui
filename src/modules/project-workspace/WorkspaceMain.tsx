@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, type Dispatch, type SetStateAction, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, type Dispatch, type SetStateAction, useState } from 'react';
 
 import { ChatInterface } from '@/modules/chat';
 import { FileTree } from '@/modules/file-tree';
@@ -85,6 +85,10 @@ function WorkspaceMain({
 
   const shouldShowTasksTab = Boolean(tasksEnabled && isTaskMasterInstalled);
   const isSplitView = !isMobile && splitPaneTargets.length > 0;
+  const splitPaneSessionIds = useMemo(
+    () => new Set(isSplitView ? splitPaneTargets.map((target) => target.sessionId) : []),
+    [isSplitView, splitPaneTargets],
+  );
   // Two panes sit side by side; three or four fill a 2×2 grid.
   const splitGridRowsClassName = splitPaneTargets.length >= 2 ? 'grid-rows-2' : 'grid-rows-1';
   const chatLayoutClassName = activeTab !== 'chat'
@@ -189,6 +193,7 @@ function WorkspaceMain({
                 <ChatInterface
                   isActive={activeTab === 'chat'}
                   isSplitView={isSplitView}
+                  splitPaneSessionIds={splitPaneSessionIds}
                   selectedProject={selectedProject}
                   selectedSession={selectedSession}
                   ws={ws}

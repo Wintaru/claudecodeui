@@ -36,6 +36,8 @@ type ChatInterfaceProps = {
   paneRole?: ChatPaneRole;
   /** True while more than one chat pane shows, so Escape stops only the focused pane. */
   isSplitView?: boolean;
+  /** Main pane only: sessions a split pane shows, which that pane keeps the state of. */
+  splitPaneSessionIds?: ReadonlySet<string>;
   selectedProject: Project | null;
   selectedSession: ProjectSession | null;
   ws: WebSocket | null;
@@ -62,6 +64,7 @@ function ChatInterface({
   isActive,
   paneRole = 'main',
   isSplitView = false,
+  splitPaneSessionIds,
   selectedProject,
   selectedSession,
   ws,
@@ -290,6 +293,7 @@ function ChatInterface({
   useChatRealtimeHandlers({
     isActive,
     paneRole,
+    splitPaneSessionIds,
     subscribe,
     provider,
     selectedSession,

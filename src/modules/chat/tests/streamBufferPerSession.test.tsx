@@ -9,9 +9,8 @@ import type { SessionStore } from '@/modules/chat/hooks/useSessionStore';
 
 /**
  * One socket carries the stream of every session that runs from this browser
- * tab. The handler used to keep one text buffer for all of them, so when the
- * viewed session and a background session streamed at the same time, each
- * flush wrote both sessions' text into one of them.
+ * tab, so each session keeps its own text buffer: when the viewed session and
+ * a background session stream at the same time, neither gets the other's text.
  */
 
 const STREAM_FLUSH_MS = 100;
