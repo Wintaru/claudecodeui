@@ -1,0 +1,108 @@
+import assert from 'node:assert/strict';
+
+import { act, renderHook, waitFor } from '@testing-library/react';
+import type { TFunction } from 'i18next';
+import { afterEach, test, vi } from 'vitest';
+
+import { api } from '@/shared/api';
+import type { Project, SessionContext, SidebarContextTarget } from '@/shared/types';
+import { describePushState, toVsCodeUrl } from '@/modules/sidebar/utils/sessionContextFormatting';
+import { useSessionContext } from '@/modules/sidebar/hooks/useSessionContext';
+
+/**
+ * The context panel shows the focused conversation's push command and links. A
+ * push command copied while the panel still shows the previous conversation
+ * would push the wrong repository, so a target switch must hide the old answer.
+ */
+
+const t = ((key: string, options?: string | { defaultValue?: string; count?: number }) => {
+  if (typeof options === 'string') {
+    return options;
+  }
+  return (options?.defaultValue ?? key).replace('{{count}}', String(options?.count ?? ''));
+}) as unknown as TFunction;
+
+const git = (overrides: Partial<NonNullable<SessionContext['git']>> = {}): NonNullable<SessionContext['git']> => ({
+  branch: '884-turningPrompt',
+  hasUpstream: true,
+  remoteName: 'origin',
+  ahead: 0,
+  behind: 0,
+  changedFileCount: 0,
+  stagedFileCount: 0,
+  pushCommand: 'git -C /w/x push',
+  repo: null,
+  ...overrides,
+});
+
+const contextFor = (folderPath: string): SessionContext => ({
+  folderPath,
+  folderExists: true,
+  git: git({ pushCommand: `git -C ${folderPath} push` }),
+  issue: null,
+  pullRequest: null,
+  compareUrl: null,
+  notes: [],
+  worktrees: [],
+  lastReply: null,
+});
+
+const target = (projectId: string, sessionId: string): SidebarContextTarget => ({
+  project: { projectId, displayName: projectId, path: `/w/${projectId}`, fullPath: `/w/${projectId}` } as Project,
+  session: { id: sessionId },
+});
+
+const jsonResponse = (data: SessionContext) => new Response(JSON.stringify({ success: true, data }), { status: 200 });
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
+test('describePushState covers no upstream, commits to push, behind, and up to date', () => {
+  assert.equal(describePushState(git({ hasUpstream: false, ahead: null, behind: null }), t), 'Not pushed yet');
+  assert.equal(describePushState(git({ ahead: 3 }), t), '3 commits to push');
+  assert.equal(describePushState(git({ ahead: 2, behind: 1 }), t), '2 commits to push · 1 behind');
+  assert.equal(describePushState(git(), t), 'Nothing to push');
+});
+
+test('toVsCodeUrl gives one slash after the authority on Windows and POSIX paths', () => {
+  assert.equal(toVsCodeUrl('C:\\workspaces\\Ocuvera-884\\884-HANDOFF.md'), 'vscode://file/C:/workspaces/Ocuvera-884/884-HANDOFF.md');
+  assert.equal(toVsCodeUrl('/home/josh/My Notes.md'), 'vscode://file/home/josh/My%20Notes.md');
+  assert.equal(toVsCodeUrl('C:\\notes\\PR#12?.md'), 'vscode://file/C:/notes/PR%2312%3F.md');
+});
+
+test('switching targets hides the previous context until the new one arrives', async () => {
+  let resolveSecond: (response: Response) => void = () => {};
+  const spy = vi.spyOn(api, 'sessionContext')
+    .mockImplementationOnce(async () => jsonResponse(contextFor('/w/a')))
+    .mockImplementationOnce(() => new Promise<Response>((resolve) => {
+      resolveSecond = resolve;
+    }));
+
+  const { result, rerender } = renderHook((props: { target: SidebarContextTarget }) => useSessionContext(props.target), {
+    initialProps: { target: target('a', 's1') },
+  });
+  await waitFor(() => assert.equal(result.current.context?.folderPath, '/w/a'));
+
+  rerender({ target: target('b', 's2') });
+  assert.equal(result.current.context, null, 'the old push command must not show for the new target');
+  await waitFor(() => assert.equal(spy.mock.calls.length, 2));
+
+  await act(async () => {
+    resolveSecond(jsonResponse(contextFor('/w/b')));
+  });
+  await waitFor(() => assert.equal(result.current.context?.folderPath, '/w/b'));
+});
+
+test('a window focus asks again for the same target', async () => {
+  const spy = vi.spyOn(api, 'sessionContext').mockImplementation(async () => jsonResponse(contextFor('/w/a')));
+  const { result } = renderHook(() => useSessionContext(target('a', 's1')));
+  await waitFor(() => assert.equal(result.current.context?.folderPath, '/w/a'));
+
+  act(() => {
+    window.dispatchEvent(new Event('focus'));
+  });
+
+  await waitFor(() => assert.equal(spy.mock.calls.length, 2));
+  assert.equal(result.current.context?.folderPath, '/w/a', 'a refresh of the same target keeps the shown context');
+});

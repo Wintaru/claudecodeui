@@ -414,6 +414,9 @@ export const api = {
     ) => post('/api/worktrees/remove', { project: projectId, worktreePath, ...options }),
   },
 
+  sessionContext: (projectId: string, sessionId: string | null, options: ApiRequestOptions = {}) =>
+    get(`/api/session-context${query({ project: projectId, session: sessionId })}`, options),
+
   // Provider (coding agent) endpoints — models, capabilities, sessions, MCP, skills.
   providers: {
     capabilities: () => get('/api/providers/capabilities'),

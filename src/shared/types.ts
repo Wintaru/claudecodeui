@@ -1561,6 +1561,40 @@ export type SidebarSplitViewActions = {
   isSplitFull: boolean;
 };
 
+/** The conversation the sidebar's context panel describes: the focused pane's. */
+export type SidebarContextTarget = {
+  project: Project;
+  /** Null while a new chat has no session yet. */
+  session: ProjectSession | null;
+};
+
+// Mirrors `SessionContext` in server/modules/session-context/session-context.service.ts.
+export type SessionContextNoteKind = 'checkout' | 'prBody' | 'handoff' | 'designDoc' | 'walkthrough';
+
+export type SessionContextNote = { kind: SessionContextNoteKind; name: string; path: string };
+
+export type SessionContext = {
+  folderPath: string;
+  folderExists: boolean;
+  git: {
+    branch: string | null;
+    hasUpstream: boolean;
+    remoteName: string | null;
+    ahead: number | null;
+    behind: number | null;
+    changedFileCount: number;
+    stagedFileCount: number;
+    pushCommand: string | null;
+    repo: { owner: string; name: string } | null;
+  } | null;
+  issue: { number: number; url: string | null } | null;
+  pullRequest: { number: number; url: string; state: string } | null;
+  compareUrl: string | null;
+  notes: SessionContextNote[];
+  worktrees: Array<{ path: string; branch: string | null; isCurrent: boolean }>;
+  lastReply: { timestamp: string; blocks: Array<{ language: string | null; code: string }> } | null;
+};
+
 export type SidebarProjectListProps = SessionRowActions & {
   projects: Project[];
   filteredProjects: Project[];

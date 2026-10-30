@@ -3,8 +3,9 @@ import { Activity, Archive, Folder, MessageSquare, RotateCcw, Search, Trash2 } f
 import type { TFunction } from 'i18next';
 
 import { LLMProviderLogo, ScrollArea } from '@/shared/ui';
-import type { ArchivedProjectListItem, ArchivedSessionListItem, ConversationSearchResults, Project, RecentConversationListItem, ReleaseInfo, SearchProgress, SidebarProjectListProps, SidebarSearchMode } from '@/shared/types';
+import type { ArchivedProjectListItem, ArchivedSessionListItem, ConversationSearchResults, Project, RecentConversationListItem, ReleaseInfo, SearchProgress, SidebarContextTarget, SidebarProjectListProps, SidebarSearchMode } from '@/shared/types';
 import { formatCompactAge, getAllSessions } from '@/modules/sidebar/utils/sidebarProjectFormatting';
+import SidebarContextPanel from '@/modules/sidebar/SidebarContextPanel';
 import SidebarFooter from '@/modules/sidebar/SidebarFooter';
 import SidebarHeader from '@/modules/sidebar/SidebarHeader';
 import SidebarProjectList from '@/modules/sidebar/SidebarProjectList';
@@ -126,6 +127,7 @@ type SidebarContentProps = {
   onShowVersionModal: () => void;
   onShowSettings: () => void;
   projectListProps: SidebarProjectListProps;
+  contextTarget: SidebarContextTarget | null;
   t: TFunction;
 };
 
@@ -173,6 +175,7 @@ export default function SidebarContent({
   onShowVersionModal,
   onShowSettings,
   projectListProps,
+  contextTarget,
   t,
 }: SidebarContentProps) {
   const showConversationSearch = searchMode === 'conversations' && searchFilter.trim().length >= 2;
@@ -684,6 +687,8 @@ export default function SidebarContent({
           <SidebarProjectList {...projectListProps} />
         )}
       </ScrollArea>
+
+      {!isMobile && <SidebarContextPanel target={contextTarget} t={t} />}
 
       {!isRenamingOnMobile && (
         <SidebarFooter

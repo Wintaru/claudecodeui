@@ -8,7 +8,7 @@ import { useSidebarController } from '@/modules/sidebar/hooks/useSidebarControll
 import { useTaskMaster, useTasksSettings } from '@/modules/task-master';
 import { usePaletteOps } from '@/modules/command-palette';
 import { useBackgroundSessionIdSet, useBusySessionIdSet } from '@/shared/context/SessionProtectionContext';
-import type { LLMProvider, LoadingProgress, MCPServerStatus, Project, ProjectSession, SidebarProjectListProps, SidebarSplitViewActions } from '@/shared/types';
+import type { LLMProvider, LoadingProgress, MCPServerStatus, Project, ProjectSession, SidebarContextTarget, SidebarProjectListProps, SidebarSplitViewActions } from '@/shared/types';
 import SidebarCollapsed from '@/modules/sidebar/SidebarCollapsed';
 import SidebarContent from '@/modules/sidebar/SidebarContent';
 import SidebarModals from '@/modules/sidebar/SidebarModals';
@@ -35,6 +35,8 @@ type SidebarProps = {
   onCloseSettings: () => void;
   isMobile: boolean;
   splitView?: SidebarSplitViewActions;
+  /** The focused pane's conversation, described by the context panel. */
+  contextTarget?: SidebarContextTarget | null;
 };
 
 type TaskMasterSidebarContext = {
@@ -63,6 +65,7 @@ function Sidebar({
   onCloseSettings,
   isMobile,
   splitView,
+  contextTarget = null,
 }: SidebarProps) {
   const { t } = useTranslation(['sidebar', 'common']);
   const { isPWA } = useDeviceSettings({ trackMobile: false });
@@ -355,6 +358,7 @@ function Sidebar({
             onShowVersionModal={() => setShowVersionModal(true)}
             onShowSettings={onShowSettings}
             projectListProps={projectListProps}
+            contextTarget={contextTarget}
             t={t}
           />
         </>
