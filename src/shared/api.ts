@@ -416,6 +416,8 @@ export const api = {
 
   sessionContext: (projectId: string, sessionId: string | null, options: ApiRequestOptions = {}) =>
     get(`/api/session-context${query({ project: projectId, session: sessionId })}`, options),
+  openInEditor: (projectId: string, targetPath: string) =>
+    post('/api/session-context/open', { project: projectId, path: targetPath }),
 
   // Provider (coding agent) endpoints — models, capabilities, sessions, MCP, skills.
   providers: {

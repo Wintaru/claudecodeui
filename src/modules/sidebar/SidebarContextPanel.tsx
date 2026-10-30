@@ -4,6 +4,7 @@ import type { TFunction } from 'i18next';
 
 import type { SessionContext, SessionContextNoteKind, SidebarContextTarget } from '@/shared/types';
 import { copyTextToClipboard } from '@/shared/utils';
+import { api, ApiRequestError, readApiJson } from '@/shared/api';
 import { useSessionContext } from '@/modules/sidebar/hooks/useSessionContext';
 import { describePushState, toVsCodeUrl } from '@/modules/sidebar/utils/sessionContextFormatting';
 
@@ -108,7 +109,26 @@ function LinkRow({ href, children, title }: { href: string; children: ReactNode;
   );
 }
 
-function ContextBody({ context, t }: { context: SessionContext; t: TFunction }) {
+function EditorRow({ path, onOpen, children }: { path: string; onOpen: (path: string) => void; children: ReactNode }) {
+  return (
+    <button
+      type="button"
+      onClick={() => onOpen(path)}
+      title={path}
+      className="flex w-full min-w-0 items-center gap-1.5 rounded px-1 py-0.5 text-left text-[11px] text-foreground transition-colors hover:bg-accent/60"
+    >
+      {children}
+    </button>
+  );
+}
+
+type ContextBodyProps = {
+  context: SessionContext;
+  onOpenInEditor: (path: string) => void;
+  t: TFunction;
+};
+
+function ContextBody({ context, onOpenInEditor, t }: ContextBodyProps) {
   const { git } = context;
   const otherWorktrees = context.worktrees.filter((worktree) => !worktree.isCurrent);
 
@@ -163,10 +183,10 @@ function ContextBody({ context, t }: { context: SessionContext; t: TFunction }) 
           </div>
         )}
         {context.folderExists && (
-          <LinkRow href={toVsCodeUrl(context.folderPath)}>
+          <EditorRow path={context.folderPath} onOpen={onOpenInEditor}>
             <ExternalLink className="h-3 w-3 flex-shrink-0 text-muted-foreground" aria-hidden />
             <span>{t('context.openInVsCode', 'Open in VS Code')}</span>
-          </LinkRow>
+          </EditorRow>
         )}
       </Section>
 
@@ -198,11 +218,11 @@ function ContextBody({ context, t }: { context: SessionContext; t: TFunction }) 
           {context.notes.map((note) => {
             const [key, fallback] = NOTE_KIND_LABELS[note.kind];
             return (
-              <LinkRow key={note.path} href={toVsCodeUrl(note.path)} title={note.path}>
+              <EditorRow key={note.path} path={note.path} onOpen={onOpenInEditor}>
                 <FileText className="h-3 w-3 flex-shrink-0 text-muted-foreground" aria-hidden />
                 <span className="flex-shrink-0 text-muted-foreground">{t(key, fallback)}</span>
                 <span className="truncate">{note.name}</span>
-              </LinkRow>
+              </EditorRow>
             );
           })}
         </Section>
@@ -211,10 +231,10 @@ function ContextBody({ context, t }: { context: SessionContext; t: TFunction }) 
       {otherWorktrees.length > 0 && (
         <Section title={t('context.worktrees', 'Other worktrees')}>
           {otherWorktrees.map((worktree) => (
-            <LinkRow key={worktree.path} href={toVsCodeUrl(worktree.path)} title={worktree.path}>
+            <EditorRow key={worktree.path} path={worktree.path} onOpen={onOpenInEditor}>
               <GitBranch className="h-3 w-3 flex-shrink-0 text-muted-foreground" aria-hidden />
               <span className="truncate">{worktree.branch ?? worktree.path}</span>
-            </LinkRow>
+            </EditorRow>
           ))}
         </Section>
       )}
@@ -263,6 +283,25 @@ export default function SidebarContextPanel({ target, t }: SidebarContextPanelPr
     });
   }, []);
 
+  const projectId = target?.project.projectId ?? null;
+  const handleOpenInEditor = useCallback((targetPath: string) => {
+    if (!projectId) {
+      return;
+    }
+    // The server starts `code`, which opens the folder in its own window. The
+    // vscode:// link is the fallback; it opens in whichever window was last active.
+    void api.openInEditor(projectId, targetPath)
+      .then((response) => readApiJson(response))
+      .catch((error: unknown) => {
+        // A refused or missing path has no use for the link; only "VS Code did not start" or no answer does.
+        const canFallBack = !(error instanceof ApiRequestError) || error.code === 'EDITOR_LAUNCH_FAILED';
+        console.warn(`[session-context] open in VS Code failed${canFallBack ? ', using the vscode:// link' : ''}:`, error);
+        if (canFallBack) {
+          window.location.href = toVsCodeUrl(targetPath);
+        }
+      });
+  }, [projectId]);
+
   if (!target) {
     return null;
   }
@@ -308,7 +347,7 @@ export default function SidebarContextPanel({ target, t }: SidebarContextPanelPr
             </p>
           )}
           {context ? (
-            <ContextBody context={context} t={t} />
+            <ContextBody context={context} onOpenInEditor={handleOpenInEditor} t={t} />
           ) : hasError ? (
             <p className="px-1 text-[11px] text-muted-foreground">{t('context.loadFailed', 'Could not load the context.')}</p>
           ) : (
