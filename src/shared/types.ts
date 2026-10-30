@@ -1546,6 +1546,17 @@ export type SessionRowActions = {
   onDeleteSession: (sessionId: string, sessionTitle: string) => void;
   /** Branches a session into an independent one. Rows hide it for providers that cannot. */
   onForkSession?: (session: SessionWithProvider) => void;
+  /** The split view's menu action; absent at phone width, where the split view is off. */
+  splitView?: SidebarSplitViewActions;
+};
+
+/** What a session menu needs to offer "Open in split". */
+export type SidebarSplitViewActions = {
+  openSessionInSplit: (sessionId: string) => void;
+  /** Sessions already in a split pane; their rows, like the main pane's, offer no "Open in split". */
+  splitSessionIds: ReadonlySet<string>;
+  /** Four conversations show: the item stays, disabled. */
+  isSplitFull: boolean;
 };
 
 export type SidebarProjectListProps = SessionRowActions & {

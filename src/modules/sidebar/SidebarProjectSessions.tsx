@@ -3,7 +3,7 @@ import type { TFunction } from 'i18next';
 
 import { Button } from '@/shared/ui';
 import { cn } from '@/shared/utils';
-import type { LLMProvider, Project, ProjectSession, SessionWithProvider, SidebarSessionSelection } from '@/shared/types';
+import type { LLMProvider, Project, ProjectSession, SessionWithProvider, SidebarSessionSelection, SidebarSplitViewActions } from '@/shared/types';
 import SidebarSessionItem from '@/modules/sidebar/SidebarSessionItem';
 import { useCompactSidebar } from '@/modules/sidebar/hooks/useCompactSidebar';
 
@@ -30,6 +30,7 @@ type SidebarProjectSessionsProps = {
   onSessionSelect: (session: SessionWithProvider, projectName: string) => void;
   onDeleteSession: (sessionId: string, sessionTitle: string) => void;
   onForkSession?: (session: SessionWithProvider) => void;
+  splitView?: SidebarSplitViewActions;
   onLoadMoreSessions: (projectId: string) => void;
   onNewSession: (project: Project) => void;
   /** The sessions ticked here, or null when this project's list is not in selection mode. */
@@ -82,6 +83,7 @@ export default function SidebarProjectSessions({
   onSessionSelect,
   onDeleteSession,
   onForkSession,
+  splitView,
   onLoadMoreSessions,
   onNewSession,
   selectedSessionIds,
@@ -238,6 +240,7 @@ export default function SidebarProjectSessions({
               onSessionSelect={onSessionSelect}
               onDeleteSession={onDeleteSession}
               onForkSession={onForkSession}
+              splitView={splitView}
               isSelecting={isSelecting}
               isChecked={checkedSessionIds.has(session.id)}
               onToggleSessionSelected={onToggleSessionSelected}

@@ -5,7 +5,7 @@ import type { TFunction } from 'i18next';
 
 import { Badge, Dialog, DialogContent, DialogTitle, LLMProviderLogo, Tooltip, buttonVariants } from '@/shared/ui';
 import { cn } from '@/shared/utils';
-import type { LLMProvider, Project, ProjectSession, SessionWithProvider } from '@/shared/types';
+import type { LLMProvider, Project, ProjectSession, SessionWithProvider, SidebarSplitViewActions } from '@/shared/types';
 import { PROVIDER_LABELS, createSessionViewModel, formatCompactAge } from '@/modules/sidebar/utils/sidebarProjectFormatting';
 import { useCompactSidebar } from '@/modules/sidebar/hooks/useCompactSidebar';
 import { useProviderSessionIdCopy } from '@/modules/sidebar/hooks/useProviderSessionIdCopy';
@@ -32,6 +32,7 @@ type SidebarSessionItemProps = {
   onDeleteSession: (sessionId: string, sessionTitle: string) => void;
   /** Branches this session into an independent one; absent when its provider cannot. */
   onForkSession?: (session: SessionWithProvider) => void;
+  splitView?: SidebarSplitViewActions;
   /** This project's list is in bulk-selection mode: the row acts as a checkbox and hides its options. */
   isSelecting: boolean;
   /** Ticked for the pending bulk delete. Resolved by the list, which never ticks a running row. */
@@ -60,6 +61,7 @@ function SidebarSessionItem({
   onSessionSelect,
   onDeleteSession,
   onForkSession,
+  splitView,
   isSelecting,
   isChecked,
   onToggleSessionSelected,
@@ -478,6 +480,8 @@ function SidebarSessionItem({
             onSaveEditingSession={onSaveEditingSession}
             onDeleteSession={onDeleteSession}
             onFork={onForkSession ? () => onForkSession(session) : undefined}
+            splitView={splitView}
+            isSelected={isSelected}
             t={t}
           />
         )}

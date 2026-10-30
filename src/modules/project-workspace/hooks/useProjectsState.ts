@@ -7,7 +7,8 @@ import type { ServerEvent,
   LLMProvider,
   LoadingProgress,
   Project,
-  ProjectSession,IsSessionProcessing } from '@/shared/types';
+  ProjectSession,IsSessionProcessing,
+  SidebarSplitViewActions } from '@/shared/types';
 import { mergeProjectSelectionMetadata } from '@/modules/project-workspace/utils/projectSelectionMetadata';
 import { useSplitPanes } from '@/modules/project-workspace/hooks/useSplitPanes';
 import { readSelectedProvider } from '@/shared/selectedProvider';
@@ -1357,6 +1358,12 @@ export function useProjectsState({
     [navigate, selectedProject?.projectId],
   );
 
+  const splitView = useMemo<SidebarSplitViewActions | undefined>(() => (
+    isMobile
+      ? undefined
+      : { openSessionInSplit: handleOpenSessionInSplit, splitSessionIds: new Set(splitSessionIds), isSplitFull }
+  ), [handleOpenSessionInSplit, isMobile, isSplitFull, splitSessionIds]);
+
   const sidebarSharedProps = useMemo(
     () => ({
       projects,
@@ -1377,6 +1384,7 @@ export function useProjectsState({
       settingsInitialTab,
       onCloseSettings: () => setShowSettings(false),
       isMobile,
+      splitView,
     }),
     [
       attentionSessionIds,
@@ -1395,6 +1403,7 @@ export function useProjectsState({
       selectedProject,
       selectedSession,
       showSettings,
+      splitView,
     ],
   );
 
