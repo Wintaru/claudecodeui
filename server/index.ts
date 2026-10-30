@@ -29,7 +29,6 @@ import {
 import { taskmasterRoutes } from './modules/taskmaster/index.js';
 import { commandsRoutes } from './modules/commands/index.js';
 import { settingsRoutes } from './modules/settings/index.js';
-import { createSystemModule } from './modules/system/index.js';
 import { createAgentModule } from './modules/agent/index.js';
 import projectModuleRoutes from './modules/projects/projects.routes.js';
 import notificationRoutes from './modules/notifications/notifications.routes.js';
@@ -74,11 +73,6 @@ const RUNNING_VERSION = (() => {
         return null;
     }
 })();
-const systemRoutes = createSystemModule({
-    appRoot: APP_ROOT,
-    installMode,
-    isPlatform: IS_PLATFORM,
-});
 console.log('SERVER_PORT from env:', process.env.SERVER_PORT);
 
 const app = express();
@@ -177,8 +171,6 @@ app.use('/api/commands', authenticateToken, commandsRoutes);
 
 // Settings API Routes (protected)
 app.use('/api/settings', authenticateToken, settingsRoutes);
-
-app.use('/api/system', authenticateToken, systemRoutes);
 
 app.use('/api/notifications', authenticateToken, notificationRoutes);
 
