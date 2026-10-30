@@ -110,3 +110,99 @@ test('a phone-width screen shows no split panes but keeps them stored', () => {
   assert.deepEqual(result.current.splitSessionIds, []);
   assert.equal(localStorage.getItem(STORAGE_KEY), JSON.stringify(['a']));
 });
+
+test('focus follows the pane the user is in, and the main pane is the default', () => {
+  const { result } = renderSplitPanes('main');
+  act(() => result.current.openSessionInSplit('a'));
+  assert.equal(result.current.focusedSplitSessionId, null);
+
+  act(() => result.current.focusPane('a'));
+  assert.equal(result.current.focusedSplitSessionId, 'a');
+
+  act(() => result.current.focusPane(null));
+  assert.equal(result.current.focusedSplitSessionId, null);
+});
+
+test('closing the focused split pane gives focus back to the main pane', () => {
+  const { result } = renderSplitPanes('main');
+  act(() => result.current.openSessionInSplit('a'));
+  act(() => result.current.focusPane('a'));
+
+  act(() => result.current.closeSplitPane('a'));
+  assert.equal(result.current.focusedSplitSessionId, null);
+
+  act(() => result.current.openSessionInSplit('a'));
+  assert.equal(result.current.focusedSplitSessionId, null, 'reopening a pane does not bring back its old focus');
+});
+
+test('a fork in the focused pane keeps the focus on that pane', () => {
+  const { result } = renderSplitPanes('main');
+  act(() => result.current.openSessionInSplit('a'));
+  act(() => result.current.focusPane('a'));
+
+  act(() => result.current.replaceSplitPane('a', 'fork-of-a'));
+
+  assert.equal(result.current.focusedSplitSessionId, 'fork-of-a');
+});
+
+test('with the main pane focused, a sidebar choice is left to the main pane', () => {
+  const { result } = renderSplitPanes('main');
+  act(() => result.current.openSessionInSplit('a'));
+
+  let isShownInSplit = true;
+  act(() => { isShownInSplit = result.current.showInFocusedPane('x'); });
+
+  assert.equal(isShownInSplit, false);
+  assert.deepEqual(result.current.splitSessionIds, ['a']);
+});
+
+test('with a split pane focused, a sidebar choice replaces that pane and keeps its focus', () => {
+  const { result } = renderSplitPanes('main');
+  act(() => result.current.openSessionInSplit('a'));
+  act(() => result.current.openSessionInSplit('b'));
+  act(() => result.current.focusPane('b'));
+
+  let isShownInSplit = false;
+  act(() => { isShownInSplit = result.current.showInFocusedPane('x'); });
+
+  assert.equal(isShownInSplit, true);
+  assert.deepEqual(result.current.splitSessionIds, ['a', 'x']);
+  assert.equal(result.current.focusedSplitSessionId, 'x');
+});
+
+test('a sidebar choice that is already open moves the focus to it instead of opening it twice', () => {
+  const { result } = renderSplitPanes('main');
+  act(() => result.current.openSessionInSplit('a'));
+  act(() => result.current.openSessionInSplit('b'));
+  act(() => result.current.focusPane('b'));
+
+  let isShownInSplit = false;
+  act(() => { isShownInSplit = result.current.showInFocusedPane('a'); });
+  assert.equal(isShownInSplit, true);
+  assert.deepEqual(result.current.splitSessionIds, ['a', 'b']);
+  assert.equal(result.current.focusedSplitSessionId, 'a');
+
+  act(() => { isShownInSplit = result.current.showInFocusedPane('main'); });
+  assert.equal(isShownInSplit, false, 'the main pane already shows it');
+  assert.equal(result.current.focusedSplitSessionId, null);
+});
+
+test('a new main pane conversation moves the focus back to the main pane', () => {
+  const { result, rerender } = renderSplitPanes('main');
+  act(() => result.current.openSessionInSplit('a'));
+  act(() => result.current.focusPane('a'));
+
+  rerender({ mainSessionId: 'other-main', isMobile: false });
+
+  assert.equal(result.current.focusedSplitSessionId, null);
+});
+
+test('the sidebar callback keeps its identity when the focus moves', () => {
+  const { result } = renderSplitPanes('main');
+  act(() => result.current.openSessionInSplit('a'));
+  const before = result.current.showInFocusedPane;
+
+  act(() => result.current.focusPane('a'));
+
+  assert.equal(result.current.showInFocusedPane, before);
+});

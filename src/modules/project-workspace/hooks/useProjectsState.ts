@@ -8,6 +8,7 @@ import type { ServerEvent,
   LoadingProgress,
   Project,
   ProjectSession,IsSessionProcessing,
+  SessionSelectOptions,
   SidebarSplitViewActions } from '@/shared/types';
 import { mergeProjectSelectionMetadata } from '@/modules/project-workspace/utils/projectSelectionMetadata';
 import { MAX_SPLIT_PANES, useSplitPanes } from '@/modules/project-workspace/hooks/useSplitPanes';
@@ -531,6 +532,9 @@ export function useProjectsState({
     splitSessionIds,
     splitSessionIdsRef,
     isSplitFull,
+    focusedSplitSessionId,
+    focusPane,
+    showInFocusedPane,
     openSessionInSplit,
     closeSplitPane,
     closeMainPane,
@@ -1164,13 +1168,21 @@ export function useProjectsState({
   );
 
   const handleSessionSelect = useCallback(
-    (session: ProjectSession) => {
+    (session: ProjectSession, options?: SessionSelectOptions) => {
       clearSessionAttention(session.id);
-      setSelectedSession(session);
 
+      const isChatShown = activeTab === 'chat' || activeTab === 'tasks' || activeTab === 'browser';
       if (activeTab === 'tasks' || activeTab === 'browser') {
         setActiveTab('chat');
       }
+
+      // With a split pane focused and the chat on screen, the conversation
+      // replaces that pane and the main pane keeps its own. On another tab the
+      // panes are hidden, so the main pane takes it as before.
+      if (isChatShown && !options?.inMainPane && showInFocusedPane(session.id)) {
+        return;
+      }
+      setSelectedSession(session);
 
       if (isMobile) {
         // Sessions are tagged with the owning project's DB `projectId` when
@@ -1187,7 +1199,7 @@ export function useProjectsState({
 
       navigate(`/session/${session.id}`);
     },
-    [activeTab, clearSessionAttention, isMobile, navigate, selectedProject?.projectId],
+    [activeTab, clearSessionAttention, isMobile, navigate, selectedProject?.projectId, showInFocusedPane],
   );
 
   const handleNewSession = useCallback(
@@ -1459,6 +1471,8 @@ export function useProjectsState({
     splitPaneTargets,
     splitExternalUpdates,
     isSplitFull,
+    focusedSplitSessionId,
+    focusPane,
     handleOpenSessionInSplit,
     closeSplitPane,
     closeMainPane,

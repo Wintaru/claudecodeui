@@ -147,6 +147,46 @@ test('an update to another session leaves a split pane\'s target unchanged', asy
   assert.equal(result.current.splitPaneTargets[0], targetBefore);
 });
 
+test('a sidebar click with a split pane focused fills that pane and leaves the main pane alone', async () => {
+  projectsResponse.mockResolvedValue({ ok: true, json: async () => [project] });
+  const navigate = vi.fn();
+  const { useProjectsState } = await import('@/modules/project-workspace/hooks/useProjectsState');
+  const { result } = renderHook(() =>
+    useProjectsState({
+      sessionId: 'main-session',
+      navigate,
+      subscribe: () => () => {},
+      isMobile: false,
+      isSessionProcessing: () => false,
+    }),
+  );
+  await waitFor(() => {
+    assert.equal(result.current.selectedSession?.id, 'main-session');
+  });
+  act(() => result.current.handleOpenSessionInSplit('split-session'));
+  act(() => result.current.focusPane('split-session'));
+  navigate.mockClear();
+
+  act(() => result.current.handleSessionSelect(otherSession));
+
+  assert.deepEqual(result.current.splitSessionIds, ['other-session']);
+  assert.equal(result.current.focusedSplitSessionId, 'other-session');
+  assert.equal(result.current.selectedSession?.id, 'main-session');
+  assert.deepEqual(navigate.mock.calls, []);
+
+  // The archive path selects the project first, so it always uses the main pane.
+  act(() => result.current.handleSessionSelect(splitSession, { inMainPane: true }));
+  assert.deepEqual(navigate.mock.calls, [['/session/split-session']]);
+  assert.deepEqual(result.current.splitSessionIds, ['other-session']);
+
+  // On a tab that hides the chat panes, the main pane takes the click.
+  act(() => result.current.focusPane('other-session'));
+  act(() => result.current.setActiveTab('files'));
+  navigate.mockClear();
+  act(() => result.current.handleSessionSelect(mainSession));
+  assert.deepEqual(navigate.mock.calls, [['/session/main-session']]);
+});
+
 test('a change on disk to a split session signals its pane', async () => {
   const { result, dispatch } = await renderWithSplitPane();
 
