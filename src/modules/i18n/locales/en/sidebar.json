@@ -221,6 +221,23 @@
     },
     "worktrees": "Other worktrees",
     "lastReply": "From the last reply",
-    "copyBlock": "Copy block"
+    "copyBlock": "Copy block",
+    "review": {
+      "title": "Review",
+      "outdated": "outdated",
+      "bot": "bot",
+      "loadFailed": "Could not load review threads.",
+      "noThreads": "No open threads",
+      "firstPage": "Only the first page of threads was read.",
+      "checksPassed": "Checks passed",
+      "checksFailed_one": "{{count}} check failed",
+      "checksFailed_other": "{{count}} checks failed",
+      "checksPending_one": "{{count}} check running",
+      "checksPending_other": "{{count}} checks running",
+      "openThreads_one": "{{count}} open thread",
+      "openThreads_other": "{{count}} open threads",
+      "replies_one": "{{count}} reply",
+      "replies_other": "{{count}} replies"
+    }
   }
 }

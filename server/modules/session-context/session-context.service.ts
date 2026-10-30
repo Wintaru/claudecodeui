@@ -263,8 +263,8 @@ async function readLastReplyBlocks(sessionId: string | null, deps: SessionContex
 }
 
 /**
- * Builds the reader for the sidebar's context panel. It keeps a short PR cache,
- * because `gh` is a network call and the panel asks again on every focus change.
+ * Builds the reader for the chat panes' context panels. It keeps a short PR cache,
+ * because `gh` is a network call and each pane asks again on every window focus.
  */
 export function createSessionContextReader(deps: SessionContextDependencies, now: () => number = Date.now) {
   // Holds the promise, so a burst of requests shares one `gh` call.

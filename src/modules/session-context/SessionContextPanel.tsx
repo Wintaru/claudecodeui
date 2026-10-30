@@ -188,7 +188,7 @@ function ReviewBody({ review, isLoading, hasError, t }: ReviewState & { t: TFunc
         review.threads.map((thread) => <ReviewThreadRow key={thread.url} thread={thread} t={t} />)
       )}
       {review.hasMoreThreads && (
-        <p className="px-1 text-[10px] text-muted-foreground">{t('context.review.firstPage', 'Only the first 100 threads were read.')}</p>
+        <p className="px-1 text-[10px] text-muted-foreground">{t('context.review.firstPage', 'Only the first page of threads was read.')}</p>
       )}
     </div>
   );
