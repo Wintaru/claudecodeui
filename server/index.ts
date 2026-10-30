@@ -51,6 +51,7 @@ import browserUseRoutes from './modules/browser-use/browser-use.routes.js';
 import { assetsRoutes } from './modules/assets/index.js';
 import { fileTreeRoutes } from './modules/file-tree/index.js';
 import { worktreesRoutes } from './modules/worktrees/index.js';
+import { sessionContextRoutes } from './modules/session-context/index.js';
 import browserUseMcpRoutes from './modules/browser-use/browser-use-mcp.routes.js';
 import { browserUseService } from './modules/browser-use/browser-use.service.js';
 import { initializeDatabase, sessionsDb } from './modules/database/index.js';
@@ -168,6 +169,9 @@ app.use('/api/git', authenticateToken, gitRoutes);
 
 // Git worktree management (protected)
 app.use('/api/worktrees', authenticateToken, worktreesRoutes);
+
+// Sidebar context panel: push command, links, and last-reply commands for one conversation (protected)
+app.use('/api/session-context', authenticateToken, sessionContextRoutes);
 
 // TaskMaster API Routes (protected)
 app.use('/api/taskmaster', authenticateToken, taskmasterRoutes);
