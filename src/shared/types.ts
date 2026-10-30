@@ -1546,6 +1546,15 @@ export type SidebarSplitViewActions = {
   isSplitFull: boolean;
 };
 
+/** How the sidebar opens a conversation it hands to the workspace. */
+export type SessionSelectOptions = {
+  /**
+   * Open it in the main pane even when a split pane has focus. The archive
+   * path sets this, because it selects the conversation's project first.
+   */
+  inMainPane?: boolean;
+};
+
 /** The conversation a chat pane's context panel describes. */
 export type SessionContextTarget = {
   project: Project;
