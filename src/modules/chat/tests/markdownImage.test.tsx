@@ -36,7 +36,7 @@ beforeEach(() => {
 
 const renderInProject = (markdown: string, projectId: string | null = 'project-1') =>
   render(
-    <MarkdownWorkspaceContext.Provider value={{ projectId }}>
+    <MarkdownWorkspaceContext.Provider value={{ projectId, canOpenFiles: true }}>
       <Markdown>{markdown}</Markdown>
     </MarkdownWorkspaceContext.Provider>,
   );

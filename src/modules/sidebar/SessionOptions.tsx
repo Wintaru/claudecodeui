@@ -1,10 +1,10 @@
 import { useEffect, useRef } from 'react';
-import { Check, Edit2, GitBranch, MoreHorizontal, Trash2, X } from 'lucide-react';
+import { Check, Columns2, Edit2, GitBranch, MoreHorizontal, Trash2, X } from 'lucide-react';
 import type { TFunction } from 'i18next';
 
 import { ActionMenu } from '@/shared/ui';
 import { cn } from '@/shared/utils';
-import type { LLMProvider } from '@/shared/types';
+import type { LLMProvider, SidebarSplitViewActions } from '@/shared/types';
 import { useSessionForkingProviders } from '@/shared/hooks/useProviderCapabilities';
 import { useProviderSessionIdCopy } from '@/modules/sidebar/hooks/useProviderSessionIdCopy';
 import { PROVIDER_LABELS } from '@/modules/sidebar/utils/sidebarProjectFormatting';
@@ -29,6 +29,10 @@ type SessionOptionsProps = {
   onDeleteSession: (sessionId: string, sessionTitle: string) => void;
   /** Bound by the caller, which owns the session object the fork needs. */
   onFork?: () => void;
+  /** Absent at phone width, where the split view is off. */
+  splitView?: SidebarSplitViewActions;
+  /** The session shows in the main pane, so "Open in split" is not offered. */
+  isSelected?: boolean;
   /** Withheld where the row has nowhere to send a delete. */
   canDelete?: boolean;
   className?: string;
@@ -58,6 +62,8 @@ export default function SessionOptions({
   onSaveEditingSession,
   onDeleteSession,
   onFork,
+  splitView,
+  isSelected = false,
   canDelete = true,
   className,
   t,
@@ -71,6 +77,7 @@ export default function SessionOptions({
   // provider id here; the request is cached module-side, so every row shares one.
   const forkableProviders = useSessionForkingProviders();
   const canFork = Boolean(onFork) && forkableProviders.has(provider) && !isProcessing;
+  const canOpenInSplit = Boolean(splitView) && !isSelected && !splitView?.splitSessionIds.has(sessionId);
 
   // While editing, dismiss only when the click lands outside the rename panel,
   // matching Escape and the cancel button.
@@ -175,6 +182,16 @@ export default function SessionOptions({
               closeOnSelect: false,
               onSelect: handleCopyAction,
             },
+            ...(canOpenInSplit && splitView ? [{
+              key: 'open-in-split',
+              label: 'Open in split',
+              description: splitView.isSplitFull
+                ? `Close a pane first (${splitView.maxPanes} open).`
+                : 'Show it beside the open conversation.',
+              icon: Columns2,
+              disabled: splitView.isSplitFull,
+              onSelect: () => splitView.openSessionInSplit(sessionId),
+            }] : []),
             ...(canFork && onFork ? [{
               key: 'fork',
               label: 'Fork session',

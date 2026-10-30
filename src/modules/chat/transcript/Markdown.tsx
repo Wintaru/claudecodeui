@@ -9,6 +9,7 @@ import { useTranslation } from 'react-i18next';
 
 import { MermaidDiagram } from '@/modules/code-editor';
 import { MarkdownImage } from '@/modules/chat/transcript/MarkdownImage';
+import { useMarkdownCanOpenFiles } from '@/modules/chat/context/MarkdownWorkspaceContext';
 import { normalizeInlineCodeFences } from '@/modules/chat/utils/chatFormatting';
 import { normalizeLatexDelimiters } from '@/modules/chat/utils/latexDelimiters';
 import { copyTextToClipboard } from '@/shared/utils';
@@ -284,6 +285,7 @@ function MarkdownBodyRenderer({ children, breaks = false }: Omit<MarkdownProps, 
   );
   const rehypePlugins = useMemo(() => (hasMath ? [rehypeKatex] : EMPTY_PLUGINS), [hasMath]);
   const { openFileInEditor, openDirectory } = usePaletteOps();
+  const canOpenFiles = useMarkdownCanOpenFiles();
 
   const components = useMemo(
     () => ({
@@ -295,6 +297,9 @@ function MarkdownBodyRenderer({ children, breaks = false }: Omit<MarkdownProps, 
         const fileRef = looksLikeFilePath(href) ? href : looksLikeFilePath(linkText) ? linkText : undefined;
 
         if (fileRef && !isExternalHref(href)) {
+          if (!canOpenFiles) {
+            return <span className="text-blue-600 dark:text-blue-400">{linkChildren}</span>;
+          }
           return (
             <a
               href={href || fileRef}
@@ -330,7 +335,7 @@ function MarkdownBodyRenderer({ children, breaks = false }: Omit<MarkdownProps, 
         );
       },
     }),
-    [openFileInEditor, openDirectory],
+    [canOpenFiles, openFileInEditor, openDirectory],
   );
 
   return (

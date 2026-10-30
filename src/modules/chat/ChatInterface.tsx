@@ -19,7 +19,7 @@ import type {
 import { useChatProviderState } from '@/modules/chat/hooks/useChatProviderState';
 import { useScheduledMessages } from '@/modules/chat/composer/useScheduledMessages';
 import { useChatSessionState } from '@/modules/chat/hooks/useChatSessionState';
-import { useChatRealtimeHandlers } from '@/modules/chat/hooks/useChatRealtimeHandlers';
+import { useChatRealtimeHandlers, type ChatPaneRole } from '@/modules/chat/hooks/useChatRealtimeHandlers';
 import { useChatComposerState } from '@/modules/chat/hooks/useChatComposerState';
 import { useSessionStore } from '@/modules/chat/hooks/useSessionStore';
 import {
@@ -32,6 +32,12 @@ import CommandResultModal from '@/modules/chat/modals/CommandResultModal';
 
 type ChatInterfaceProps = {
   isActive: boolean;
+  /** `split` for a pane beside the main chat; see `ChatPaneRole`. */
+  paneRole?: ChatPaneRole;
+  /** True while more than one chat pane shows, so Escape stops only the focused pane. */
+  isSplitView?: boolean;
+  /** Main pane only: sessions a split pane shows, which that pane keeps the state of. */
+  splitPaneSessionIds?: ReadonlySet<string>;
   selectedProject: Project | null;
   selectedSession: ProjectSession | null;
   ws: WebSocket | null;
@@ -56,6 +62,9 @@ type ChatInterfaceProps = {
  */
 function ChatInterface({
   isActive,
+  paneRole = 'main',
+  isSplitView = false,
+  splitPaneSessionIds,
   selectedProject,
   selectedSession,
   ws,
@@ -83,8 +92,8 @@ function ChatInterface({
   } = useSessionProtectionActions();
 
   const sessionStore = useSessionStore();
-  const streamTimerRef = useRef<number | null>(null);
-  const accumulatedStreamRef = useRef('');
+  const streamTimerRef = useRef(new Map<string, number>());
+  const accumulatedStreamRef = useRef(new Map<string, string>());
   // When each session's `chat.subscribe` was last sent; idle acks older than
   // a later local request are discarded as stale.
   const statusCheckSentAtRef = useRef(new Map<string, number>());
@@ -94,11 +103,11 @@ function ChatInterface({
   const lastSeqRef = useRef(new Map<string, number>());
 
   const resetStreamingState = useCallback(() => {
-    if (streamTimerRef.current) {
-      clearTimeout(streamTimerRef.current);
-      streamTimerRef.current = null;
+    for (const timer of streamTimerRef.current.values()) {
+      clearTimeout(timer);
     }
-    accumulatedStreamRef.current = '';
+    streamTimerRef.current.clear();
+    accumulatedStreamRef.current.clear();
   }, []);
 
   const {
@@ -283,6 +292,8 @@ function ChatInterface({
 
   useChatRealtimeHandlers({
     isActive,
+    paneRole,
+    splitPaneSessionIds,
     subscribe,
     provider,
     selectedSession,
@@ -322,7 +333,10 @@ function ChatInterface({
     });
   }, [setInput, textareaRef]);
 
-  usePaletteOpsRegister({ insertComposerText });
+  // The palette has one composer target, so only the main pane registers.
+  usePaletteOpsRegister(paneRole === 'main' ? { insertComposerText } : {});
+
+  const paneRootRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!canAbortSession) {
@@ -331,6 +345,9 @@ function ChatInterface({
 
     const handleGlobalEscape = (event: KeyboardEvent) => {
       if (event.key !== 'Escape' || event.repeat || event.defaultPrevented) {
+        return;
+      }
+      if (isSplitView && !paneRootRef.current?.contains(document.activeElement)) {
         return;
       }
 
@@ -342,7 +359,7 @@ function ChatInterface({
     return () => {
       document.removeEventListener('keydown', handleGlobalEscape, { capture: true });
     };
-  }, [canAbortSession, handleAbortSession]);
+  }, [canAbortSession, handleAbortSession, isSplitView]);
 
   useEffect(() => {
     return () => {
@@ -399,9 +416,12 @@ function ChatInterface({
   }), [pendingPermissionRequests, handlePermissionDecision]);
 
   // Lets markdown image paths in the transcript resolve against this project.
+  // A split pane gets `onFileOpen` only when its project is the main pane's.
+  const canOpenFiles = paneRole === 'main' || Boolean(onFileOpen);
   const markdownWorkspaceValue = useMemo(() => ({
     projectId: selectedProject?.projectId ?? null,
-  }), [selectedProject?.projectId]);
+    canOpenFiles,
+  }), [canOpenFiles, selectedProject?.projectId]);
 
   // Lets a workflow card fetch its agents' timelines for this session.
   const transcriptSessionValue = useMemo(() => ({ sessionId: currentSessionId }), [currentSessionId]);
@@ -456,7 +476,7 @@ function ChatInterface({
 
   return (
     <PermissionContext.Provider value={permissionContextValue}>
-      <div className="flex h-full min-h-0 flex-col">
+      <div ref={paneRootRef} className="flex h-full min-h-0 flex-col">
         <MarkdownWorkspaceContext.Provider value={markdownWorkspaceValue}>
           <TranscriptSessionContext.Provider value={transcriptSessionValue}>
             <ChatMessagesPane

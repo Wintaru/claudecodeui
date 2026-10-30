@@ -230,6 +230,8 @@ export default function SidebarRecentConversations({
                     __projectId: conversation.projectId ?? undefined,
                   })
                   : undefined}
+                splitView={sessionActions.splitView}
+                isSelected={isSelected}
                 t={t}
               />
             </div>

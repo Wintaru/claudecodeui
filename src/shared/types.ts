@@ -1531,6 +1531,70 @@ export type SessionRowActions = {
   onDeleteSession: (sessionId: string, sessionTitle: string) => void;
   /** Branches a session into an independent one. Rows hide it for providers that cannot. */
   onForkSession?: (session: SessionWithProvider) => void;
+  /** The split view's menu action; absent at phone width, where the split view is off. */
+  splitView?: SidebarSplitViewActions;
+};
+
+/** What a session menu needs to offer "Open in split". */
+export type SidebarSplitViewActions = {
+  openSessionInSplit: (sessionId: string) => void;
+  /** Sessions already in a split pane; their rows, like the main pane's, offer no "Open in split". */
+  splitSessionIds: ReadonlySet<string>;
+  /** The most conversations on screen at once, the main pane included. */
+  maxPanes: number;
+  /** `maxPanes` conversations show: the item stays, disabled. */
+  isSplitFull: boolean;
+};
+
+/** The conversation a chat pane's context panel describes. */
+export type SessionContextTarget = {
+  project: Project;
+  /** Null while a new chat has no session yet. */
+  session: ProjectSession | null;
+};
+
+// Mirrors `SessionContext` in server/modules/session-context/session-context.service.ts.
+export type SessionContextNoteKind = 'checkout' | 'prBody' | 'handoff' | 'designDoc' | 'walkthrough';
+
+export type SessionContextNote = { kind: SessionContextNoteKind; name: string; path: string };
+
+export type SessionContext = {
+  folderPath: string;
+  folderExists: boolean;
+  git: {
+    branch: string | null;
+    hasUpstream: boolean;
+    remoteName: string | null;
+    ahead: number | null;
+    behind: number | null;
+    changedFileCount: number;
+    stagedFileCount: number;
+    pushCommand: string | null;
+    repo: { owner: string; name: string } | null;
+  } | null;
+  issue: { number: number; url: string | null } | null;
+  pullRequest: { number: number; url: string; state: string } | null;
+  compareUrl: string | null;
+  notes: SessionContextNote[];
+  worktrees: Array<{ path: string; branch: string | null; isCurrent: boolean }>;
+  lastReply: { timestamp: string; blocks: Array<{ language: string | null; code: string }> } | null;
+};
+
+// Mirrors `PullRequestReview` in server/modules/session-context/session-context-review.service.ts.
+/** A pull request's open review threads and head-commit checks, shown in a pane's context panel. */
+export type PullRequestReview = {
+  threads: Array<{
+    path: string;
+    line: number | null;
+    isOutdated: boolean;
+    url: string;
+    author: string;
+    isBot: boolean;
+    body: string;
+    replyCount: number;
+  }>;
+  hasMoreThreads: boolean;
+  checks: { total: number; failedNames: string[]; pendingCount: number } | null;
 };
 
 export type SidebarProjectListProps = SessionRowActions & {

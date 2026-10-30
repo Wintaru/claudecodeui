@@ -16,8 +16,21 @@ const hasActionablePermissionRequests = (requests: Array<{ toolName?: unknown }>
   return Array.isArray(requests) && requests.some((request) => isActionablePermissionRequest(request));
 };
 
+/**
+ * Every chat view on the page receives every frame. A `split` view handles
+ * only frames for its own session. The `main` view (the one the address
+ * names) plays the sounds and the title indicator for every session, so they
+ * run once. The sidebar's processing state of a session is kept by the view
+ * that shows it, which holds its full history and sent its subscribe; the
+ * main view also keeps it for sessions that no view shows.
+ */
+export type ChatPaneRole = 'main' | 'split';
+
 type UseChatRealtimeHandlersArgs = {
   isActive: boolean;
+  paneRole?: ChatPaneRole;
+  /** Main view only: sessions that a split view shows and keeps the state of. */
+  splitPaneSessionIds?: ReadonlySet<string>;
   subscribe: (listener: (event: ServerEvent) => void) => () => void;
   provider: LLMProvider;
   selectedSession: ProjectSession | null;
@@ -25,8 +38,12 @@ type UseChatRealtimeHandlersArgs = {
   setTokenBudget: (budget: Record<string, unknown> | null) => void;
   pendingPermissionRequests: PendingPermissionRequest[];
   setPendingPermissionRequests: Dispatch<SetStateAction<PendingPermissionRequest[]>>;
-  streamTimerRef: MutableRefObject<number | null>;
-  accumulatedStreamRef: MutableRefObject<string>;
+  /**
+   * Keyed by session id: one socket carries every session's stream, and two
+   * sessions that stream at the same time must not write into one buffer.
+   */
+  streamTimerRef: MutableRefObject<Map<string, number>>;
+  accumulatedStreamRef: MutableRefObject<Map<string, string>>;
   /**
    * Highest live `seq` observed per session. Essential for reconnect catch-up:
    * `chat.subscribe` sends this value as `lastSeq` so the server replays only
@@ -61,6 +78,8 @@ type UseChatRealtimeHandlersArgs = {
  */
 export function useChatRealtimeHandlers({
   isActive,
+  paneRole = 'main',
+  splitPaneSessionIds,
   subscribe,
   provider,
   selectedSession,
@@ -88,6 +107,8 @@ export function useChatRealtimeHandlers({
   activeViewSessionIdRef.current = selectedSession?.id || currentSessionId || null;
   const isActiveRef = useRef(isActive);
   isActiveRef.current = isActive;
+  const splitPaneSessionIdsRef = useRef(splitPaneSessionIds);
+  splitPaneSessionIdsRef.current = splitPaneSessionIds;
 
   // Keep the latest pending-permission snapshot available to the websocket
   // listener so back-to-back permission events can dedupe and re-arm the
@@ -99,12 +120,43 @@ export function useChatRealtimeHandlers({
   }, [pendingPermissionRequests]);
 
   useEffect(() => {
+    const isMainPane = paneRole === 'main';
+    const keepsSessionState = (sessionId: string | null | undefined) => (
+      !isMainPane || !sessionId || !splitPaneSessionIdsRef.current?.has(sessionId)
+    );
+    const markProcessing = (...args: Parameters<MarkSessionProcessing>) => {
+      if (keepsSessionState(args[0])) onSessionProcessing?.(...args);
+    };
+    const markIdle = (...args: Parameters<MarkSessionIdle>) => {
+      if (keepsSessionState(args[0])) onSessionIdle?.(...args);
+    };
+    const markBackground = (...args: Parameters<MarkSessionBackground>) => {
+      if (keepsSessionState(args[0])) onSessionBackground?.(...args);
+    };
+
     // What a session that has finished responding is left with: the tasks it
     // launched that are still running, or nothing, which marks it idle. The
     // store's records are what the transcript's cards fold their live status
     // from, so this reads the same answer they draw.
     const reportRemainingBackgroundWork = (sid: string) => {
-      onSessionBackground?.(sid, collectRunningBackgroundTasks(normalizedToChatMessages(sessionStore.getMessages(sid))));
+      markBackground(sid, collectRunningBackgroundTasks(normalizedToChatMessages(sessionStore.getMessages(sid))));
+    };
+
+    // Writes a session's buffered stream text into the store and clears its
+    // buffer and timer. Resolves whether there was text to write.
+    const flushStream = (streamSessionId: string): boolean => {
+      const timer = streamTimerRef.current.get(streamSessionId);
+      if (timer !== undefined) {
+        clearTimeout(timer);
+        streamTimerRef.current.delete(streamSessionId);
+      }
+      const text = accumulatedStreamRef.current.get(streamSessionId);
+      accumulatedStreamRef.current.delete(streamSessionId);
+      if (!text) {
+        return false;
+      }
+      sessionStore.updateStreaming(streamSessionId, text, provider);
+      return true;
     };
 
     const handleEvent = (msg: ServerEvent) => {
@@ -114,6 +166,13 @@ export function useChatRealtimeHandlers({
 
       const activeViewSessionId = activeViewSessionIdRef.current;
       const sid = (typeof msg.sessionId === 'string' && msg.sessionId) || activeViewSessionId;
+      if (!isMainPane && sid !== activeViewSessionId) {
+        return;
+      }
+      // A protocol error that names no session is shown once, in the main view.
+      if (!isMainPane && msg.kind === 'protocol_error' && typeof msg.sessionId !== 'string') {
+        return;
+      }
 
       // Record replay progress for every sequenced live event.
       if (sid && typeof msg.seq === 'number') {
@@ -144,11 +203,11 @@ export function useChatRealtimeHandlers({
           if (!sid) return;
 
           if (msg.isProcessing) {
-            onSessionProcessing?.(sid);
+            markProcessing(sid);
           } else {
             // Idle ack: ignore it if a newer request started after the
             // subscribe was sent — the ack describes the older state.
-            onSessionIdle?.(sid, {
+            markIdle(sid, {
               ifStartedBefore: statusCheckSentAtRef.current.get(sid),
             });
           }
@@ -210,7 +269,7 @@ export function useChatRealtimeHandlers({
             // already settled, and idling here would drop a response in
             // flight on that session.
             if (msg.code !== 'NO_SUCH_TASK' && msg.code !== 'TASK_ID_REQUIRED') {
-              onSessionIdle?.(sid);
+              markIdle(sid);
             }
             sessionStore.appendRealtime(sid, {
               id: `protocol_error_${Date.now()}`,
@@ -243,35 +302,29 @@ export function useChatRealtimeHandlers({
       // --- Streaming: buffer for performance ---
       if (msg.kind === 'stream_delta') {
         const text = (msg.content as string) || '';
-        if (!text) return;
-        accumulatedStreamRef.current += text;
-        if (!streamTimerRef.current) {
-          streamTimerRef.current = window.setTimeout(() => {
-            streamTimerRef.current = null;
-            if (sid) {
-              sessionStore.updateStreaming(sid, accumulatedStreamRef.current, provider);
+        if (!text || !sid) return;
+        accumulatedStreamRef.current.set(sid, (accumulatedStreamRef.current.get(sid) ?? '') + text);
+        if (!streamTimerRef.current.has(sid)) {
+          streamTimerRef.current.set(sid, window.setTimeout(() => {
+            streamTimerRef.current.delete(sid);
+            const buffered = accumulatedStreamRef.current.get(sid);
+            if (buffered) {
+              sessionStore.updateStreaming(sid, buffered, provider);
             }
-          }, 100);
+          }, 100));
         }
         // Also route to store for non-active sessions
-        if (sid && sid !== activeViewSessionId) {
+        if (sid !== activeViewSessionId) {
           sessionStore.appendRealtime(sid, msg as unknown as NormalizedMessage);
         }
         return;
       }
 
       if (msg.kind === 'stream_end') {
-        if (streamTimerRef.current) {
-          clearTimeout(streamTimerRef.current);
-          streamTimerRef.current = null;
-        }
         if (sid) {
-          if (accumulatedStreamRef.current) {
-            sessionStore.updateStreaming(sid, accumulatedStreamRef.current, provider);
-          }
+          flushStream(sid);
           sessionStore.finalizeStreaming(sid);
         }
-        accumulatedStreamRef.current = '';
         return;
       }
 
@@ -291,15 +344,9 @@ export function useChatRealtimeHandlers({
       switch (msg.kind) {
         case 'complete': {
           // Flush any remaining streaming state
-          if (streamTimerRef.current) {
-            clearTimeout(streamTimerRef.current);
-            streamTimerRef.current = null;
-          }
-          if (sid && accumulatedStreamRef.current) {
-            sessionStore.updateStreaming(sid, accumulatedStreamRef.current, provider);
+          if (sid && flushStream(sid)) {
             sessionStore.finalizeStreaming(sid);
           }
-          accumulatedStreamRef.current = '';
 
           // `complete` is the unified terminal event — every provider run ends
           // with exactly one, regardless of success, failure, or abort. The
@@ -311,7 +358,7 @@ export function useChatRealtimeHandlers({
           if (sid && !msg.aborted) {
             reportRemainingBackgroundWork(sid);
           } else {
-            onSessionIdle?.(sid);
+            markIdle(sid);
           }
           if (sid === activeViewSessionId) {
             pendingPermissionRequestsRef.current = [];
@@ -325,7 +372,7 @@ export function useChatRealtimeHandlers({
           }
 
           // Celebrate only successful runs (failed runs end with success: false).
-          if (msg.success !== false) {
+          if (isMainPane && msg.success !== false) {
             showCompletionTitleIndicator();
             void playChatCompletionSound();
           }
@@ -346,7 +393,7 @@ export function useChatRealtimeHandlers({
 
         case 'permission_request': {
           if (!msg.requestId) break;
-          if (isActionablePermissionRequest({ toolName: msg.toolName })) {
+          if (isMainPane && isActionablePermissionRequest({ toolName: msg.toolName })) {
             void playNotificationSound();
           }
 
@@ -367,7 +414,7 @@ export function useChatRealtimeHandlers({
             }
           }
           if (sid) {
-            onSessionProcessing?.(sid);
+            markProcessing(sid);
           }
           break;
         }
@@ -396,7 +443,7 @@ export function useChatRealtimeHandlers({
               setTokenBudget(msg.tokenBudget as Record<string, unknown>);
             }
           } else if (msg.text && sid) {
-            onSessionProcessing?.(sid, {
+            markProcessing(sid, {
               statusText: msg.text as string,
               canInterrupt: msg.canInterrupt !== false,
             });
@@ -435,6 +482,7 @@ export function useChatRealtimeHandlers({
 
     return subscribe(handleEvent);
   }, [
+    paneRole,
     subscribe,
     provider,
     selectedSession,
