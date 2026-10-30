@@ -6,8 +6,8 @@ import { afterEach, test, vi } from 'vitest';
 
 import { api } from '@/shared/api';
 import type { Project, SessionContext, SidebarContextTarget } from '@/shared/types';
-import { describePushState, toVsCodeUrl } from '@/modules/sidebar/utils/sessionContextFormatting';
-import { useSessionContext } from '@/modules/sidebar/hooks/useSessionContext';
+import { describePushState, toVsCodeUrl } from '@/modules/session-context/utils/sessionContextFormatting';
+import { useSessionContext } from '@/modules/session-context/hooks/useSessionContext';
 
 /**
  * The context panel shows the focused conversation's push command and links. A

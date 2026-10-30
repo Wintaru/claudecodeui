@@ -5,8 +5,8 @@ import type { TFunction } from 'i18next';
 import type { SessionContext, SessionContextNoteKind, SidebarContextTarget } from '@/shared/types';
 import { copyTextToClipboard } from '@/shared/utils';
 import { api, ApiRequestError, readApiJson } from '@/shared/api';
-import { useSessionContext } from '@/modules/sidebar/hooks/useSessionContext';
-import { describePushState, toVsCodeUrl } from '@/modules/sidebar/utils/sessionContextFormatting';
+import { useSessionContext } from '@/modules/session-context/hooks/useSessionContext';
+import { describePushState, toVsCodeUrl } from '@/modules/session-context/utils/sessionContextFormatting';
 
 const COLLAPSED_STORAGE_KEY = 'cloudcli-context-panel-collapsed';
 const COPIED_FEEDBACK_MS = 1500;
@@ -271,7 +271,7 @@ type SidebarContextPanelProps = {
   t: TFunction;
 };
 
-/** Rendered by SidebarContent between the list and the footer: what Josh needs at hand for the focused conversation. */
+/** Used by the sidebar module, rendered by SidebarContent between the list and the footer: what Josh needs at hand for the focused conversation. */
 export default function SidebarContextPanel({ target, t }: SidebarContextPanelProps) {
   const [isCollapsed, setIsCollapsed] = useState(readCollapsed);
   const { context, isLoading, hasError, refresh } = useSessionContext(isCollapsed ? null : target);
