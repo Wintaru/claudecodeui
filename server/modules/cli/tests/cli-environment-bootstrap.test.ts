@@ -76,8 +76,6 @@ export function createCliApplication() {
     },
     output: { log: () => undefined, error: () => undefined },
     sandboxService: { execute: async () => 0 },
-    getLatestPackageVersion: async () => '1.0.0',
-    updateGlobalPackage: () => undefined,
     startServer: async () => undefined,
     startBrowserUseMcp: async () => undefined,
   });
