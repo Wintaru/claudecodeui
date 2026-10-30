@@ -18,6 +18,17 @@ import {
 
 
 const EXPANDED_PROJECTS_STORAGE_KEY = 'cloudcli-expanded-projects';
+const RECENT_CONVERSATIONS_PAGE_SIZE = 40;
+const RECENT_CONVERSATIONS_ACTIVITY_RELOAD_DELAY_MS = 1000;
+
+const readActivityTime = (lastActivity: string | null | undefined): number => {
+  const time = Date.parse(String(lastActivity ?? ''));
+  return Number.isNaN(time) ? 0 : time;
+};
+
+const sortByLastActivity = (conversations: RecentConversationListItem[]): RecentConversationListItem[] => (
+  [...conversations].sort((left, right) => readActivityTime(right.lastActivity) - readActivityTime(left.lastActivity))
+);
 
 /** Read browser-local project expansion, tolerating missing or invalid storage. */
 function readExpandedProjects(): Set<string> | null {
@@ -299,7 +310,7 @@ export function useSidebarController({
     setRecentConversationsError(false);
 
     try {
-      const response = await api.recentConversations({ limit: 40, offset });
+      const response = await api.recentConversations({ limit: RECENT_CONVERSATIONS_PAGE_SIZE, offset });
       if (!response.ok) {
         throw new Error(`Failed to load recent conversations: ${response.status}`);
       }
@@ -344,6 +355,33 @@ export function useSidebarController({
     void fetchRecentConversationsPage(0, false);
   }, [fetchRecentConversationsPage]);
 
+  // Folds the newest page into the rows already loaded instead of replacing
+  // them, so pages added with "Load more" stay. It leaves the loading and error
+  // flags and the request sequence alone: it runs in the background, must not
+  // cancel a "Load more" in flight, and a failure is retried on the next
+  // activity change. Resolves whether the merge was applied.
+  const mergeLatestRecentConversations = useCallback(async (): Promise<boolean> => {
+    try {
+      const response = await api.recentConversations({ limit: RECENT_CONVERSATIONS_PAGE_SIZE, offset: 0 });
+      if (!response.ok) {
+        throw new Error(`Failed to load recent conversations: ${response.status}`);
+      }
+
+      const payload = (await response.json()) as RecentConversationsApiPayload;
+      const latest = Array.isArray(payload.data?.conversations) ? payload.data.conversations : [];
+      const latestIds = new Set(latest.map((conversation) => conversation.sessionId));
+      setRecentConversations((previous) => sortByLastActivity([
+        ...latest,
+        ...previous.filter((conversation) => !latestIds.has(conversation.sessionId)),
+      ]));
+      setRecentConversationsTotal((previous) => Number(payload.data?.total ?? previous));
+      return true;
+    } catch (error) {
+      console.error('[Sidebar] Failed to merge recent conversations:', error);
+      return false;
+    }
+  }, []);
+
   const loadMoreRecentConversations = useCallback(() => {
     if (isLoadingMoreRecentConversations || !recentConversationsHasMore) {
       return;
@@ -386,47 +424,121 @@ export function useSidebarController({
     void fetchArchivedSessions();
   }, [fetchArchivedSessions]);
 
+  // `projects` is patched live by `session_upserted`, but the Conversations list
+  // is a REST snapshot. Loaded rows take their new activity from `projects`
+  // below; only a session with new activity that is not loaded yet (a new
+  // conversation, or one past the loaded pages) needs the server.
+  const latestSessionActivity = useMemo(() => {
+    let latest = 0;
+    for (const project of projects) {
+      for (const session of project.sessions ?? []) {
+        latest = Math.max(latest, readActivityTime(session.lastActivity));
+      }
+    }
+    return latest;
+  }, [projects]);
+  const coveredActivityRef = useRef(0);
+  const latestSessionActivityRef = useRef(latestSessionActivity);
+
+  // Declared before the tab-open effect so that effect reads this render's value.
+  useEffect(() => {
+    latestSessionActivityRef.current = latestSessionActivity;
+  }, [latestSessionActivity]);
+
   useEffect(() => {
     if (searchMode !== 'conversations' || debouncedSearchQuery.length >= 2) {
       return;
     }
 
+    coveredActivityRef.current = latestSessionActivityRef.current;
     reloadRecentConversations();
   }, [debouncedSearchQuery, reloadRecentConversations, searchMode]);
 
-  // The Conversations list is only fetched when its tab opens, while `projects`
-  // is patched the moment a session is renamed from the workspace header. Fold
-  // those title changes into the rows already loaded, or a header rename would
-  // leave the highlighted conversation on its old name. The loaded rows are
-  // returned as-is when no session carries a different custom name, so
-  // unrelated `projects` updates do not re-render the list, and an empty
-  // summary never overwrites the id the server shows for an unnamed session.
-  const recentConversationsWithCurrentTitles = useMemo(() => {
+  const isRecentConversationsListShown = searchMode === 'conversations'
+    && debouncedSearchQuery.length < 2
+    && (isMobile || sidebarVisible);
+
+  useEffect(() => {
+    if (!isRecentConversationsListShown || latestSessionActivity <= coveredActivityRef.current) {
+      return undefined;
+    }
+
+    const coveredActivity = coveredActivityRef.current;
+    const loadedIds = new Set(recentConversations.map((conversation) => conversation.sessionId));
+    const hasUnloadedActivity = projects.some((project) => (project.sessions ?? []).some((session) => (
+      readActivityTime(session.lastActivity) > coveredActivity && !loadedIds.has(session.id)
+    )));
+    if (!hasUnloadedActivity) {
+      coveredActivityRef.current = latestSessionActivity;
+      return undefined;
+    }
+
+    const timer = setTimeout(() => {
+      void mergeLatestRecentConversations().then((merged) => {
+        if (merged) {
+          coveredActivityRef.current = Math.max(coveredActivityRef.current, latestSessionActivity);
+        }
+      });
+    }, RECENT_CONVERSATIONS_ACTIVITY_RELOAD_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [
+    isRecentConversationsListShown,
+    latestSessionActivity,
+    mergeLatestRecentConversations,
+    projects,
+    recentConversations,
+  ]);
+
+  // The Conversations list is fetched when its tab opens, while `projects` is
+  // patched the moment a session is renamed or gets a new message. Fold those
+  // titles and activity times into the rows already loaded, and move a row
+  // with newer activity to its place. The loaded rows are returned as-is when
+  // nothing differs, so unrelated `projects` updates do not re-render the
+  // list, and an empty summary never overwrites the id the server shows for an
+  // unnamed session.
+  const recentConversationsWithLiveSessionState = useMemo(() => {
     if (recentConversations.length === 0) {
       return recentConversations;
     }
 
     // Trimmed, because that is how the server derives a row's `sessionTitle`.
     const summaryBySessionId = new Map<string, string>();
+    const lastActivityBySessionId = new Map<string, string>();
     for (const project of projects) {
       for (const session of project.sessions ?? []) {
         const summary = typeof session.summary === 'string' ? session.summary.trim() : '';
         if (summary) {
           summaryBySessionId.set(session.id, summary);
         }
+        if (session.lastActivity) {
+          lastActivityBySessionId.set(session.id, session.lastActivity);
+        }
       }
     }
 
     let changed = false;
+    let activityChanged = false;
     const next = recentConversations.map((conversation) => {
       const summary = summaryBySessionId.get(conversation.sessionId);
-      if (summary === undefined || summary === conversation.sessionTitle) {
+      const lastActivity = lastActivityBySessionId.get(conversation.sessionId);
+      const hasNewTitle = summary !== undefined && summary !== conversation.sessionTitle;
+      const hasNewActivity = lastActivity !== undefined
+        && readActivityTime(lastActivity) > readActivityTime(conversation.lastActivity);
+      if (!hasNewTitle && !hasNewActivity) {
         return conversation;
       }
       changed = true;
-      return { ...conversation, sessionTitle: summary };
+      activityChanged ||= hasNewActivity;
+      return {
+        ...conversation,
+        ...(hasNewTitle ? { sessionTitle: summary } : {}),
+        ...(hasNewActivity ? { lastActivity } : {}),
+      };
     });
-    return changed ? next : recentConversations;
+    if (!changed) {
+      return recentConversations;
+    }
+    return activityChanged ? sortByLastActivity(next) : next;
   }, [projects, recentConversations]);
 
   useEffect(() => {
@@ -1322,7 +1434,7 @@ export function useSidebarController({
     archivedSessions: filteredArchivedSessions,
     archivedSessionsCount: archivedProjects.length + archivedSessions.length,
     isArchivedSessionsLoading,
-    recentConversations: recentConversationsWithCurrentTitles,
+    recentConversations: recentConversationsWithLiveSessionState,
     recentConversationsTotal,
     recentConversationsHasMore,
     isRecentConversationsLoading,
