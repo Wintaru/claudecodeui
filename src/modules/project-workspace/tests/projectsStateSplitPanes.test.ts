@@ -1,0 +1,101 @@
+import assert from 'node:assert/strict';
+
+import { act, renderHook, waitFor } from '@testing-library/react';
+import { afterEach, beforeEach, test, vi } from 'vitest';
+
+import type { Project, ProjectSession, ServerEvent } from '@/shared/types';
+
+/**
+ * A conversation in a split pane is on screen, so its own activity must not
+ * mark it unread, and a change to its transcript on disk must reach its pane
+ * the way `externalMessageUpdate` reaches the main pane.
+ */
+
+const projectsResponse = vi.fn();
+
+vi.mock('@/shared/api', () => ({
+  api: {
+    projects: () => projectsResponse(),
+    projectTaskmaster: () => Promise.resolve({ ok: false }),
+    sessionDetails: () => Promise.resolve({ ok: false }),
+    projectSessions: () => Promise.resolve({ ok: false }),
+  },
+}));
+
+const mainSession: ProjectSession = { id: 'main-session', summary: 'Main', __provider: 'claude' };
+const splitSession: ProjectSession = { id: 'split-session', summary: 'Split', __provider: 'claude' };
+const otherSession: ProjectSession = { id: 'other-session', summary: 'Other', __provider: 'claude' };
+
+const project: Project = {
+  projectId: 'project-1',
+  path: '/repo',
+  fullPath: '/repo',
+  displayName: 'repo',
+  isStarred: false,
+  sessions: [mainSession, splitSession, otherSession],
+  sessionMeta: { hasMore: false, total: 3 },
+};
+
+const upsert = (session: ProjectSession): ServerEvent => ({
+  kind: 'session_upserted',
+  sessionId: session.id,
+  session,
+  project: { projectId: 'project-1' },
+} as unknown as ServerEvent);
+
+const renderWithSplitPane = async () => {
+  projectsResponse.mockResolvedValue({ ok: true, json: async () => [project] });
+  let listener: ((event: ServerEvent) => void) | null = null;
+  const { useProjectsState } = await import('@/modules/project-workspace/hooks/useProjectsState');
+
+  const { result } = renderHook(() =>
+    useProjectsState({
+      sessionId: 'main-session',
+      navigate: vi.fn(),
+      subscribe: (fn) => {
+        listener = fn;
+        return () => { listener = null; };
+      },
+      isMobile: false,
+      isSessionProcessing: () => false,
+    }),
+  );
+  await waitFor(() => {
+    assert.equal(result.current.projects.length, 1);
+  });
+  act(() => {
+    result.current.handleOpenSessionInSplit('split-session');
+  });
+  assert.deepEqual(result.current.splitSessionIds, ['split-session']);
+
+  const dispatch = (event: ServerEvent) => act(() => listener?.(event));
+  return { result, dispatch };
+};
+
+beforeEach(() => {
+  localStorage.clear();
+  projectsResponse.mockReset();
+});
+
+afterEach(() => {
+  vi.resetModules();
+});
+
+test('activity in a split pane does not mark it unread', async () => {
+  const { result, dispatch } = await renderWithSplitPane();
+
+  dispatch({ kind: 'text', sessionId: 'split-session', content: 'hi' } as unknown as ServerEvent);
+  dispatch({ kind: 'text', sessionId: 'other-session', content: 'hi' } as unknown as ServerEvent);
+
+  assert.equal(result.current.sidebarSharedProps.attentionSessionIds.has('split-session'), false);
+  assert.equal(result.current.sidebarSharedProps.attentionSessionIds.has('other-session'), true);
+});
+
+test('a change on disk to a split session signals its pane', async () => {
+  const { result, dispatch } = await renderWithSplitPane();
+
+  dispatch(upsert(splitSession));
+
+  assert.equal(result.current.splitExternalUpdates['split-session'], 1);
+  assert.equal(result.current.sidebarSharedProps.attentionSessionIds.has('split-session'), false);
+});

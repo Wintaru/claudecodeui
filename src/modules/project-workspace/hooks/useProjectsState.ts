@@ -9,6 +9,7 @@ import type { ServerEvent,
   Project,
   ProjectSession,IsSessionProcessing } from '@/shared/types';
 import { mergeProjectSelectionMetadata } from '@/modules/project-workspace/utils/projectSelectionMetadata';
+import { useSplitPanes } from '@/modules/project-workspace/hooks/useSplitPanes';
 import { readSelectedProvider } from '@/shared/selectedProvider';
 
 type UseProjectsStateArgs = {
@@ -471,13 +472,31 @@ export function useProjectsState({
     sessionLookupRef.current = null;
   }, [sessionId]);
 
+  const {
+    splitSessionIds,
+    splitSessionIdsRef,
+    isSplitFull,
+    openSessionInSplit,
+    closeSplitPane,
+    closeMainPane,
+    replaceSplitPane,
+  } = useSplitPanes({ mainSessionId: sessionId ?? null, navigate, isMobile });
+  // Per split session: bumped when its transcript changes on disk while no run
+  // is active here, the same signal `externalMessageUpdate` is for the main pane.
+  const [splitExternalUpdates, setSplitExternalUpdates] = useState<Record<string, number>>({});
+
+  /** Whether a session shows in the main pane or in a split pane. */
+  const isSessionOnScreen = useCallback((targetSessionId: string) => (
+    targetSessionId === (selectedSessionRef.current?.id ?? sessionId ?? null)
+    || splitSessionIdsRef.current.includes(targetSessionId)
+  ), [sessionId, splitSessionIdsRef]);
+
   const markSessionAttention = useCallback((targetSessionId?: string | null) => {
     if (!targetSessionId) {
       return;
     }
 
-    const viewedSessionId = selectedSessionRef.current?.id ?? sessionId ?? null;
-    if (targetSessionId === viewedSessionId) {
+    if (isSessionOnScreen(targetSessionId)) {
       return;
     }
 
@@ -490,7 +509,7 @@ export function useProjectsState({
       next.add(targetSessionId);
       return next;
     });
-  }, [sessionId]);
+  }, [isSessionOnScreen]);
 
   const clearSessionAttention = useCallback((targetSessionId?: string | null) => {
     if (!targetSessionId) {
@@ -791,6 +810,14 @@ export function useProjectsState({
         && !isSessionProcessing(upsert.sessionId)
       ) {
         setExternalMessageUpdate((prev) => prev + 1);
+      } else if (splitSessionIdsRef.current.includes(upsert.sessionId)) {
+        if (!isSessionProcessing(upsert.sessionId)) {
+          const upsertedSessionId = upsert.sessionId;
+          setSplitExternalUpdates((previous) => ({
+            ...previous,
+            [upsertedSessionId]: (previous[upsertedSessionId] ?? 0) + 1,
+          }));
+        }
       } else {
         markSessionAttention(upsert.sessionId);
       }
@@ -876,7 +903,7 @@ export function useProjectsState({
     };
 
     return subscribe(handleEvent);
-  }, [isSessionProcessing, markSessionAttention, navigate, refreshProjectsSilently, sessionId, subscribe]);
+  }, [isSessionProcessing, markSessionAttention, navigate, refreshProjectsSilently, sessionId, splitSessionIdsRef, subscribe]);
 
   useEffect(() => {
     return () => {
@@ -1084,12 +1111,22 @@ export function useProjectsState({
         setSelectedSession(null);
         navigate('/');
       }
+      closeSplitPane(sessionIdToDelete);
 
       setProjects((prevProjects) =>
         prevProjects.map((project) => removeSessionFromProject(project, sessionIdToDelete)),
       );
     },
-    [clearSessionAttention, navigate, selectedSession?.id],
+    [clearSessionAttention, closeSplitPane, navigate, selectedSession?.id],
+  );
+
+  const handleOpenSessionInSplit = useCallback(
+    (targetSessionId: string) => {
+      clearSessionAttention(targetSessionId);
+      openSessionInSplit(targetSessionId);
+      setActiveTab('chat');
+    },
+    [clearSessionAttention, openSessionInSplit],
   );
 
   const handleSidebarRefresh = useCallback(async () => {
@@ -1303,6 +1340,13 @@ export function useProjectsState({
     settingsInitialTab,
     externalMessageUpdate,
     newSessionTrigger,
+    splitSessionIds,
+    splitExternalUpdates,
+    isSplitFull,
+    handleOpenSessionInSplit,
+    closeSplitPane,
+    closeMainPane,
+    replaceSplitPane,
     setActiveTab,
     setSidebarOpen,
     setShowSettings,
