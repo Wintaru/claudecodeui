@@ -14,6 +14,8 @@ type ChatPaneFrameProps = {
   onClose: () => void;
   /** False outside the split view: the frame then adds nothing around its chat. */
   isFramed?: boolean;
+  /** False at phone width, where the panel would be hidden but still load. */
+  hasContextPanel?: boolean;
   children: ReactNode;
 };
 
@@ -22,7 +24,7 @@ type ChatPaneFrameProps = {
  * chat, and its context panel. The main chat stays inside this frame when the
  * split view closes, so opening or closing a split does not remount it.
  */
-export function ChatPaneFrame({ project, session, onClose, isFramed = true, children }: ChatPaneFrameProps) {
+export function ChatPaneFrame({ project, session, onClose, isFramed = true, hasContextPanel = true, children }: ChatPaneFrameProps) {
   // The main pane has a project but no session while a new chat is open.
   const sessionTitle = session ? getSessionTitle(session) : project ? 'New chat' : 'Loading…';
   const projectName = project?.displayName || project?.path || '';
@@ -51,7 +53,7 @@ export function ChatPaneFrame({ project, session, onClose, isFramed = true, chil
         </div>
       )}
       <div className="min-h-0 flex-1">{children}</div>
-      <SessionContextPanel project={project} session={session} />
+      {hasContextPanel && <SessionContextPanel project={project} session={session} />}
     </div>
   );
 }

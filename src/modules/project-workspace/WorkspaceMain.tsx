@@ -188,6 +188,7 @@ function WorkspaceMain({
               session={selectedSession}
               onClose={onCloseMainPane}
               isFramed={isSplitView}
+              hasContextPanel={!isMobile}
             >
               <WorkspaceErrorBoundary showDetails>
                 <ChatInterface
