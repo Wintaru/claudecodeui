@@ -15,6 +15,8 @@ import { EditorSidebar, useEditorSidebar } from '@/modules/code-editor';
 import WorkspaceHeader from '@/modules/project-workspace/WorkspaceHeader';
 import WorkspaceStateView from '@/modules/project-workspace/WorkspaceStateView';
 import WorkspaceErrorBoundary from '@/modules/project-workspace/WorkspaceErrorBoundary';
+import SplitChatPane, { ChatPaneFrame } from '@/modules/project-workspace/SplitChatPane';
+import type { SplitPaneTarget } from '@/modules/project-workspace/hooks/useProjectsState';
 
 type WorkspaceMainProps = {
   selectedProject: Project | null;
@@ -37,6 +39,12 @@ type WorkspaceMainProps = {
   onProjectsRefresh: () => void;
   /** Persists a new title for a session; resolves false when the backend refuses it. Used by the header's inline rename. */
   onRenameSession: (sessionId: string, summary: string) => Promise<boolean>;
+  /** Conversations shown beside the main chat; empty outside the split view. */
+  splitPaneTargets: SplitPaneTarget[];
+  splitExternalUpdates: Record<string, number>;
+  onCloseSplitPane: (sessionId: string) => void;
+  onCloseMainPane: () => void;
+  onReplaceSplitPane: (previousSessionId: string, nextSessionId: string) => void;
 };
 
 /** Rendered by ProjectMainRegion to show the selected project's active tab: chat, files, shell, git, tasks, browser or a plugin. */
@@ -58,6 +66,11 @@ function WorkspaceMain({
   onProjectSelect,
   onProjectsRefresh,
   onRenameSession,
+  splitPaneTargets,
+  splitExternalUpdates,
+  onCloseSplitPane,
+  onCloseMainPane,
+  onReplaceSplitPane,
 }: WorkspaceMainProps) {
   const preferences = useUiPreferences();
   const { showRawParameters, showThinking, sendByCtrlEnter } = preferences;
@@ -71,6 +84,14 @@ function WorkspaceMain({
   const [revealDirectory, setRevealDirectory] = useState<DirectoryRevealRequest | null>(null);
 
   const shouldShowTasksTab = Boolean(tasksEnabled && isTaskMasterInstalled);
+  const isSplitView = !isMobile && splitPaneTargets.length > 0;
+  // Two panes sit side by side; three or four fill a 2×2 grid.
+  const splitGridRowsClassName = splitPaneTargets.length >= 2 ? 'grid-rows-2' : 'grid-rows-1';
+  const chatLayoutClassName = activeTab !== 'chat'
+    ? 'hidden'
+    : isSplitView
+      ? `grid grid-cols-2 gap-1 p-1 ${splitGridRowsClassName}`
+      : 'block';
   const shouldShowBrowserTab = browserUseEnabled;
 
   const {
@@ -157,26 +178,51 @@ function WorkspaceMain({
 
       <div className="flex min-h-0 flex-1 overflow-hidden">
         <div className={`flex min-h-0 min-w-[200px] flex-col overflow-hidden ${editorExpanded ? 'hidden' : ''} flex-1`}>
-          <div className={`h-full ${activeTab === 'chat' ? 'block' : 'hidden'}`}>
-            <WorkspaceErrorBoundary showDetails>
-              <ChatInterface
+          <div className={`h-full ${chatLayoutClassName}`}>
+            <ChatPaneFrame
+              project={selectedProject}
+              session={selectedSession}
+              onClose={onCloseMainPane}
+              isFramed={isSplitView}
+            >
+              <WorkspaceErrorBoundary showDetails>
+                <ChatInterface
+                  isActive={activeTab === 'chat'}
+                  isSplitView={isSplitView}
+                  selectedProject={selectedProject}
+                  selectedSession={selectedSession}
+                  ws={ws}
+                  sendMessage={sendMessage}
+                  onFileOpen={handleFileOpen}
+                  onNavigateToSession={onNavigateToSession}
+                  onSessionEstablished={onSessionEstablished}
+                  onShowSettings={onShowSettings}
+                  showRawParameters={showRawParameters}
+                  showThinking={showThinking}
+                  sendByCtrlEnter={sendByCtrlEnter}
+                  externalMessageUpdate={externalMessageUpdate}
+                  newSessionTrigger={newSessionTrigger}
+                  onShowAllTasks={tasksEnabled ? showAllTasks : null}
+                />
+              </WorkspaceErrorBoundary>
+            </ChatPaneFrame>
+            {isSplitView && splitPaneTargets.map((target) => (
+              <SplitChatPane
+                key={target.sessionId}
+                target={target}
                 isActive={activeTab === 'chat'}
-                selectedProject={selectedProject}
-                selectedSession={selectedSession}
                 ws={ws}
                 sendMessage={sendMessage}
-                onFileOpen={handleFileOpen}
-                onNavigateToSession={onNavigateToSession}
-                onSessionEstablished={onSessionEstablished}
+                onFileOpen={target.project?.projectId === selectedProject.projectId ? handleFileOpen : undefined}
                 onShowSettings={onShowSettings}
                 showRawParameters={showRawParameters}
                 showThinking={showThinking}
                 sendByCtrlEnter={sendByCtrlEnter}
-                externalMessageUpdate={externalMessageUpdate}
-                newSessionTrigger={newSessionTrigger}
-                onShowAllTasks={tasksEnabled ? showAllTasks : null}
+                externalMessageUpdate={splitExternalUpdates[target.sessionId] ?? 0}
+                onClose={onCloseSplitPane}
+                onReplace={onReplaceSplitPane}
               />
-            </WorkspaceErrorBoundary>
+            ))}
           </div>
 
           {activeTab === 'files' && (

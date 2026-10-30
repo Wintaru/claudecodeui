@@ -12,12 +12,13 @@ import type { Project, ProjectSession, ServerEvent } from '@/shared/types';
  */
 
 const projectsResponse = vi.fn();
+const sessionDetailsResponse = vi.fn();
 
 vi.mock('@/shared/api', () => ({
   api: {
     projects: () => projectsResponse(),
     projectTaskmaster: () => Promise.resolve({ ok: false }),
-    sessionDetails: () => Promise.resolve({ ok: false }),
+    sessionDetails: (sessionId: string) => sessionDetailsResponse(sessionId),
     projectSessions: () => Promise.resolve({ ok: false }),
   },
 }));
@@ -75,6 +76,8 @@ const renderWithSplitPane = async () => {
 beforeEach(() => {
   localStorage.clear();
   projectsResponse.mockReset();
+  sessionDetailsResponse.mockReset();
+  sessionDetailsResponse.mockResolvedValue({ ok: false });
 });
 
 afterEach(() => {
@@ -89,6 +92,36 @@ test('activity in a split pane does not mark it unread', async () => {
 
   assert.equal(result.current.sidebarSharedProps.attentionSessionIds.has('split-session'), false);
   assert.equal(result.current.sidebarSharedProps.attentionSessionIds.has('other-session'), true);
+});
+
+test('a split pane resolves a session past the loaded pages, and closes on an unknown one', async () => {
+  localStorage.setItem('cloudcli-split-panes', JSON.stringify(['older-session', 'gone-session']));
+  sessionDetailsResponse.mockImplementation(async (sessionId: string) => (
+    sessionId === 'older-session'
+      ? { ok: true, json: async () => ({ data: { summary: 'Older', provider: 'claude', project: { projectId: 'project-1' } } }) }
+      : { ok: false }
+  ));
+  projectsResponse.mockResolvedValue({ ok: true, json: async () => [project] });
+  const { useProjectsState } = await import('@/modules/project-workspace/hooks/useProjectsState');
+
+  const { result } = renderHook(() =>
+    useProjectsState({
+      sessionId: 'main-session',
+      navigate: vi.fn(),
+      subscribe: () => () => {},
+      isMobile: false,
+      isSessionProcessing: () => false,
+    }),
+  );
+
+  await waitFor(() => {
+    assert.deepEqual(result.current.splitSessionIds, ['older-session']);
+  });
+  await waitFor(() => {
+    const [target] = result.current.splitPaneTargets;
+    assert.equal(target.session?.summary, 'Older');
+    assert.equal(target.project?.projectId, 'project-1');
+  });
 });
 
 test('a change on disk to a split session signals its pane', async () => {

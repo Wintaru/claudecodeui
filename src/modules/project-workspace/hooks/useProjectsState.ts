@@ -95,6 +95,49 @@ const normalizeSessionProvider = (session: ProjectSession): ProjectSession => ({
   __provider: getSessionProvider(session),
 });
 
+type SessionDetails = NonNullable<SessionDetailsApiPayload['data']>;
+
+/** A split pane's session and its project; both null until the lookup resolves. */
+export type SplitPaneTarget = {
+  sessionId: string;
+  project: Project | null;
+  session: ProjectSession | null;
+};
+
+/**
+ * The owning project of a session the backend looked up: the loaded entry, or,
+ * when it is not in the active project list (e.g. archived), a minimal entry
+ * so the chat view still gets its paths.
+ */
+const projectFromSessionDetails = (details: SessionDetails, loadedProjects: Project[]): Project | null => {
+  const projectId = details.project?.projectId;
+  if (!projectId) {
+    return null;
+  }
+
+  return loadedProjects.find((candidate) => candidate.projectId === projectId) ?? {
+    projectId,
+    path: details.project?.path ?? details.project?.fullPath ?? '',
+    fullPath: details.project?.fullPath ?? details.project?.path ?? '',
+    displayName: details.project?.displayName ?? '',
+    isStarred: Boolean(details.project?.isStarred),
+    sessions: [],
+    sessionMeta: { hasMore: false, total: 0 },
+  };
+};
+
+const sessionFromSessionDetails = (sessionId: string, details: SessionDetails): ProjectSession => ({
+  id: sessionId,
+  summary: details.summary ?? '',
+  createdAt: details.createdAt ?? undefined,
+  lastActivity: details.lastActivity ?? undefined,
+  __provider:
+    typeof details.provider === 'string' && details.provider.trim()
+      ? (details.provider as LLMProvider)
+      : readSelectedProvider(),
+  __projectId: details.project?.projectId,
+});
+
 const projectsHaveChanges = (
   prevProjects: Project[],
   nextProjects: Project[],
@@ -1000,45 +1043,14 @@ export function useProjectsState({
         return;
       }
 
-      const resolvedProjectId = details.project?.projectId;
-      if (resolvedProjectId) {
-        setSelectedProject((previousProject) => {
-          if (previousProject?.projectId === resolvedProjectId) {
-            return previousProject;
-          }
-
-          const loadedProject = projectsRef.current.find(
-            (candidate) => candidate.projectId === resolvedProjectId,
-          );
-          if (loadedProject) {
-            return loadedProject;
-          }
-
-          // Owning project is not in the active project list (e.g. archived):
-          // synthesize a minimal entry so the chat view still gets its paths.
-          return {
-            projectId: resolvedProjectId,
-            path: details.project?.path ?? details.project?.fullPath ?? '',
-            fullPath: details.project?.fullPath ?? details.project?.path ?? '',
-            displayName: details.project?.displayName ?? '',
-            isStarred: Boolean(details.project?.isStarred),
-            sessions: [],
-            sessionMeta: { hasMore: false, total: 0 },
-          };
-        });
+      const resolvedProject = projectFromSessionDetails(details, projectsRef.current);
+      if (resolvedProject) {
+        setSelectedProject((previousProject) => (
+          previousProject?.projectId === resolvedProject.projectId ? previousProject : resolvedProject
+        ));
       }
 
-      const resolvedSession: ProjectSession = {
-        id: sessionId,
-        summary: details.summary ?? '',
-        createdAt: details.createdAt ?? undefined,
-        lastActivity: details.lastActivity ?? undefined,
-        __provider:
-          typeof details.provider === 'string' && details.provider.trim()
-            ? (details.provider as LLMProvider)
-            : readSelectedProvider(),
-        __projectId: resolvedProjectId,
-      };
+      const resolvedSession = sessionFromSessionDetails(sessionId, details);
 
       setSelectedSession((previousSession) =>
         previousSession?.id === sessionId
@@ -1047,6 +1059,64 @@ export function useProjectsState({
       );
     })();
   }, [navigate, sessionId, projects, selectedProject, selectedSession?.id, selectedSession?.__provider]);
+
+  // Split panes resolve their session the way the address does: from the
+  // loaded projects, else one backend lookup per id. A session the backend
+  // does not know closes its pane.
+  const [splitSessionLookups, setSplitSessionLookups] = useState<Record<string, SplitPaneTarget>>({});
+  const splitLookupsStartedRef = useRef(new Set<string>());
+
+  const splitPaneTargets = useMemo<SplitPaneTarget[]>(() => splitSessionIds.map((splitSessionId) => {
+    for (const project of projects) {
+      const match = project.sessions?.find((session) => session.id === splitSessionId);
+      if (match) {
+        return { sessionId: splitSessionId, project, session: normalizeSessionProvider(match) };
+      }
+    }
+    return splitSessionLookups[splitSessionId] ?? { sessionId: splitSessionId, project: null, session: null };
+  }), [projects, splitSessionIds, splitSessionLookups]);
+
+  useEffect(() => {
+    if (isLoadingProjects) {
+      return;
+    }
+
+    for (const target of splitPaneTargets) {
+      if (target.session || splitLookupsStartedRef.current.has(target.sessionId)) {
+        continue;
+      }
+      const splitSessionId = target.sessionId;
+      splitLookupsStartedRef.current.add(splitSessionId);
+
+      void (async () => {
+        let details: SessionDetails | null = null;
+        try {
+          const response = await api.sessionDetails(splitSessionId);
+          if (response.ok) {
+            details = ((await response.json()) as SessionDetailsApiPayload).data ?? null;
+          }
+        } catch (error) {
+          console.error(`Error resolving split session ${splitSessionId}:`, error);
+        }
+
+        if (!details) {
+          closeSplitPane(splitSessionId);
+          return;
+        }
+        if (typeof details.sessionId === 'string' && details.sessionId && details.sessionId !== splitSessionId) {
+          replaceSplitPane(splitSessionId, details.sessionId);
+          return;
+        }
+
+        const resolved: SplitPaneTarget = {
+          sessionId: splitSessionId,
+          project: projectFromSessionDetails(details, projectsRef.current),
+          session: sessionFromSessionDetails(splitSessionId, details),
+        };
+        setSplitSessionLookups((previous) => ({ ...previous, [splitSessionId]: resolved }));
+      })();
+    }
+  }, [closeSplitPane, isLoadingProjects, replaceSplitPane, splitPaneTargets]);
 
   const handleProjectSelect = useCallback(
     (project: Project) => {
@@ -1341,6 +1411,7 @@ export function useProjectsState({
     externalMessageUpdate,
     newSessionTrigger,
     splitSessionIds,
+    splitPaneTargets,
     splitExternalUpdates,
     isSplitFull,
     handleOpenSessionInSplit,

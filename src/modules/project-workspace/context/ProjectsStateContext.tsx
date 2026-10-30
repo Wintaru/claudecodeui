@@ -27,7 +27,7 @@ type ProjectMainState = Pick<
   | 'handleProjectSelect'
   | 'refreshProjectsSilently'
   | 'renameSession'
-  | 'splitSessionIds'
+  | 'splitPaneTargets'
   | 'splitExternalUpdates'
   | 'closeSplitPane'
   | 'closeMainPane'
@@ -104,7 +104,7 @@ export function ProjectsStateProvider({
       handleProjectSelect: state.handleProjectSelect,
       refreshProjectsSilently: state.refreshProjectsSilently,
       renameSession: state.renameSession,
-      splitSessionIds: state.splitSessionIds,
+      splitPaneTargets: state.splitPaneTargets,
       splitExternalUpdates: state.splitExternalUpdates,
       closeSplitPane: state.closeSplitPane,
       closeMainPane: state.closeMainPane,
@@ -116,7 +116,7 @@ export function ProjectsStateProvider({
       state.closeSplitPane,
       state.replaceSplitPane,
       state.splitExternalUpdates,
-      state.splitSessionIds,
+      state.splitPaneTargets,
       state.externalMessageUpdate,
       state.handleProjectSelect,
       state.isLoadingProjects,
