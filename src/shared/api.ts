@@ -416,6 +416,8 @@ export const api = {
 
   sessionContext: (projectId: string, sessionId: string | null, options: ApiRequestOptions = {}) =>
     get(`/api/session-context${query({ project: projectId, session: sessionId })}`, options),
+  sessionContextReview: (projectId: string, pullRequestNumber: number, options: ApiRequestOptions = {}) =>
+    get(`/api/session-context/review${query({ project: projectId, pr: pullRequestNumber })}`, options),
   openInEditor: (projectId: string, targetPath: string) =>
     post('/api/session-context/open', { project: projectId, path: targetPath }),
 

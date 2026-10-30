@@ -1595,6 +1595,23 @@ export type SessionContext = {
   lastReply: { timestamp: string; blocks: Array<{ language: string | null; code: string }> } | null;
 };
 
+// Mirrors `PullRequestReview` in server/modules/session-context/session-context-review.service.ts.
+/** A pull request's open review threads and head-commit checks, shown in a pane's context panel. */
+export type PullRequestReview = {
+  threads: Array<{
+    path: string;
+    line: number | null;
+    isOutdated: boolean;
+    url: string;
+    author: string;
+    isBot: boolean;
+    body: string;
+    replyCount: number;
+  }>;
+  hasMoreThreads: boolean;
+  checks: { total: number; failedNames: string[]; pendingCount: number } | null;
+};
+
 export type SidebarProjectListProps = SessionRowActions & {
   projects: Project[];
   filteredProjects: Project[];

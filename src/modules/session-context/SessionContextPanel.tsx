@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Check, ChevronDown, ChevronRight, Copy, ExternalLink, FileText, GitBranch, RefreshCw } from 'lucide-react';
+import { Check, ChevronDown, ChevronRight, Copy, ExternalLink, FileText, GitBranch, MessageSquare, RefreshCw } from 'lucide-react';
 import type { TFunction } from 'i18next';
 
-import type { Project, ProjectSession, SessionContext, SessionContextNoteKind, SessionContextTarget } from '@/shared/types';
+import type { Project, ProjectSession, PullRequestReview, SessionContext, SessionContextNoteKind, SessionContextTarget } from '@/shared/types';
 import { copyTextToClipboard } from '@/shared/utils';
 import { api, ApiRequestError, readApiJson } from '@/shared/api';
+import { usePullRequestReview } from '@/modules/session-context/hooks/usePullRequestReview';
 import { useSessionContext } from '@/modules/session-context/hooks/useSessionContext';
-import { describePaneSummary, describePushState, toVsCodeUrl } from '@/modules/session-context/utils/sessionContextFormatting';
+import { describeChecks, describePaneSummary, describePushState, toVsCodeUrl } from '@/modules/session-context/utils/sessionContextFormatting';
 
 const COPIED_FEEDBACK_MS = 1500;
 /** Expanded, the panel takes this share of its pane; the chat keeps the rest. */
@@ -119,13 +120,88 @@ function EditorRow({ path, onOpen, children }: { path: string; onOpen: (path: st
   );
 }
 
+type ReviewThread = PullRequestReview['threads'][number];
+
+function ReviewThreadRow({ thread, t }: { thread: ReviewThread; t: TFunction }) {
+  const location = thread.line ? `${thread.path}:${thread.line}` : thread.path;
+  return (
+    <a
+      href={thread.url}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="block rounded-md bg-muted/40 px-1.5 py-1 transition-colors hover:bg-accent/60"
+    >
+      <span className="flex min-w-0 items-center gap-1.5 text-[11px]">
+        <span className="min-w-0 truncate font-mono text-foreground" title={location}>{location}</span>
+        {thread.isOutdated && (
+          <span className="flex-shrink-0 text-[10px] text-muted-foreground">{t('context.review.outdated', 'outdated')}</span>
+        )}
+      </span>
+      <span className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+        <span className="truncate">{thread.author}</span>
+        {thread.isBot && (
+          <span className="flex-shrink-0 rounded border border-border px-1 uppercase">{t('context.review.bot', 'bot')}</span>
+        )}
+        {thread.replyCount > 0 && (
+          <span className="flex flex-shrink-0 items-center gap-0.5">
+            <MessageSquare className="h-2.5 w-2.5" aria-hidden />
+            {t('context.review.replies', { count: thread.replyCount, defaultValue: '{{count}} replies' })}
+          </span>
+        )}
+      </span>
+      <span className="mt-0.5 line-clamp-3 whitespace-pre-line text-[11px] text-foreground/90">{thread.body}</span>
+    </a>
+  );
+}
+
+type ReviewState = { review: PullRequestReview | null; isLoading: boolean; hasError: boolean };
+
+function ReviewBody({ review, isLoading, hasError, t }: ReviewState & { t: TFunction }) {
+  if (!review) {
+    return (
+      <p className="px-1 text-[11px] text-muted-foreground">
+        {hasError
+          ? t('context.review.loadFailed', 'Could not load review threads.')
+          : isLoading ? t('context.loading', 'Loading…') : null}
+      </p>
+    );
+  }
+  const { checks } = review;
+  return (
+    <div className="space-y-1">
+      {hasError && (
+        <p className="px-1 text-[11px] text-amber-700 dark:text-amber-300" role="status">
+          {t('context.refreshFailed', 'Refresh failed. This may be out of date.')}
+        </p>
+      )}
+      {checks && (
+        <p className="px-1 text-[11px] text-foreground">
+          {describeChecks(checks, t)}
+          {checks.failedNames.length > 0 && (
+            <span className="text-muted-foreground">: {checks.failedNames.join(', ')}</span>
+          )}
+        </p>
+      )}
+      {review.threads.length === 0 ? (
+        <p className="px-1 text-[11px] text-muted-foreground">{t('context.review.noThreads', 'No open threads')}</p>
+      ) : (
+        review.threads.map((thread) => <ReviewThreadRow key={thread.url} thread={thread} t={t} />)
+      )}
+      {review.hasMoreThreads && (
+        <p className="px-1 text-[10px] text-muted-foreground">{t('context.review.firstPage', 'Only the first 100 threads were read.')}</p>
+      )}
+    </div>
+  );
+}
+
 type ContextBodyProps = {
   context: SessionContext;
+  reviewState: ReviewState;
   onOpenInEditor: (path: string) => void;
   t: TFunction;
 };
 
-function ContextBody({ context, onOpenInEditor, t }: ContextBodyProps) {
+function ContextBody({ context, reviewState, onOpenInEditor, t }: ContextBodyProps) {
   const { git } = context;
   const otherWorktrees = context.worktrees.filter((worktree) => !worktree.isCurrent);
 
@@ -147,6 +223,12 @@ function ContextBody({ context, onOpenInEditor, t }: ContextBodyProps) {
           </p>
         )}
       </Section>
+
+      {context.pullRequest && (
+        <Section title={t('context.review.title', 'Review')}>
+          <ReviewBody {...reviewState} t={t} />
+        </Section>
+      )}
 
       {context.lastReply && context.lastReply.blocks.length > 0 && (
         <Section title={t('context.lastReply', 'From the last reply')}>
@@ -279,10 +361,20 @@ export default function SessionContextPanel({ project, session }: SessionContext
   const [isCollapsed, setIsCollapsed] = useState(true);
   const target = useMemo<SessionContextTarget | null>(() => (project ? { project, session } : null), [project, session]);
   const { context, isLoading, hasError, refresh } = useSessionContext(target);
+  const projectId = project?.projectId ?? null;
+  const {
+    review,
+    isLoading: isReviewLoading,
+    hasError: hasReviewError,
+    refresh: refreshReview,
+  } = usePullRequestReview(projectId, context?.pullRequest?.number ?? null, !isCollapsed);
 
   const toggleCollapsed = useCallback(() => setIsCollapsed((previous) => !previous), []);
+  const refreshAll = useCallback(() => {
+    refresh();
+    refreshReview();
+  }, [refresh, refreshReview]);
 
-  const projectId = project?.projectId ?? null;
   const handleOpenInEditor = useCallback((targetPath: string) => {
     if (!projectId) {
       return;
@@ -305,7 +397,7 @@ export default function SessionContextPanel({ project, session }: SessionContext
     return null;
   }
 
-  const summary = context ? describePaneSummary(context, t) : t('context.loading', 'Loading…');
+  const summary = context ? describePaneSummary(context, t, review) : t('context.loading', 'Loading…');
 
   return (
     <div className={`hidden min-h-0 flex-shrink-0 flex-col border-t border-border md:flex ${isCollapsed ? '' : EXPANDED_HEIGHT_CLASS}`}>
@@ -327,12 +419,12 @@ export default function SessionContextPanel({ project, session }: SessionContext
         {!isCollapsed && (
           <button
             type="button"
-            onClick={refresh}
+            onClick={refreshAll}
             aria-label={t('context.refresh', 'Refresh context')}
             title={t('context.refresh', 'Refresh context')}
             className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-accent/60 hover:text-foreground"
           >
-            <RefreshCw className={`h-3 w-3 ${isLoading ? 'animate-spin' : ''}`} aria-hidden />
+            <RefreshCw className={`h-3 w-3 ${isLoading || isReviewLoading ? 'animate-spin' : ''}`} aria-hidden />
           </button>
         )}
       </div>
@@ -344,7 +436,12 @@ export default function SessionContextPanel({ project, session }: SessionContext
             </p>
           )}
           {context ? (
-            <ContextBody context={context} onOpenInEditor={handleOpenInEditor} t={t} />
+            <ContextBody
+              context={context}
+              reviewState={{ review, isLoading: isReviewLoading, hasError: hasReviewError }}
+              onOpenInEditor={handleOpenInEditor}
+              t={t}
+            />
           ) : hasError ? (
             <p className="px-1 text-[11px] text-muted-foreground">{t('context.loadFailed', 'Could not load the context.')}</p>
           ) : (
