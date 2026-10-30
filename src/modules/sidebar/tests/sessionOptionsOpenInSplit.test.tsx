@@ -8,7 +8,7 @@ import type { SidebarSplitViewActions } from '@/shared/types';
 
 /**
  * "Open in split" shows a session beside the open conversation. It is not
- * offered for a session already on screen, and with four conversations open
+ * offered for a session already on screen, and with three conversations open
  * it stays in the menu, disabled, so no pane closes without the user.
  */
 
@@ -24,7 +24,7 @@ const noop = () => {};
 const splitView = (overrides: Partial<SidebarSplitViewActions> = {}): SidebarSplitViewActions => ({
   openSessionInSplit: vi.fn(),
   splitSessionIds: new Set<string>(),
-  maxPanes: 4,
+  maxPanes: 3,
   isSplitFull: false,
   ...overrides,
 });
@@ -81,12 +81,12 @@ test('is not offered for the main pane, a split pane, or at phone width', () => 
   assert.equal(findItem(), null);
 });
 
-test('is disabled with four conversations open', () => {
+test('is disabled with three conversations open', () => {
   const actions = splitView({ isSplitFull: true });
   openMenu({ splitView: actions });
 
   const item = findItem();
   assert.ok(item);
   assert.equal(item.disabled, true);
-  assert.ok(screen.getByText('Close a pane first (4 open).'));
+  assert.ok(screen.getByText('Close a pane first (3 open).'));
 });

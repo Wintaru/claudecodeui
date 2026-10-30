@@ -3,8 +3,8 @@ import type { NavigateFunction } from 'react-router-dom';
 
 const SPLIT_PANES_STORAGE_KEY = 'cloudcli-split-panes';
 const NO_SPLIT_PANES: string[] = [];
-/** Panes beside the main one; with the main pane that makes four. */
-export const MAX_SPLIT_PANES = 3;
+/** Panes beside the main one; with the main pane that makes three columns. */
+export const MAX_SPLIT_PANES = 2;
 
 /** Read the stored split pane ids, tolerating missing, invalid or oversized storage. */
 function readStoredSplitSessionIds(): string[] {

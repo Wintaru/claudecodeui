@@ -92,12 +92,12 @@ function WorkspaceMain({
     () => new Set(isSplitView ? splitPaneTargets.map((target) => target.sessionId) : []),
     [isSplitView, splitPaneTargets],
   );
-  // Two panes sit side by side; three or four fill a 2×2 grid.
-  const splitGridRowsClassName = splitPaneTargets.length >= 2 ? 'grid-rows-2' : 'grid-rows-1';
+  // One row of full-height columns, so each pane keeps room for its context panel.
+  const splitGridColumnsClassName = splitPaneTargets.length >= 2 ? 'grid-cols-3' : 'grid-cols-2';
   const chatLayoutClassName = activeTab !== 'chat'
     ? 'hidden'
     : isSplitView
-      ? `grid grid-cols-2 gap-1 p-1 ${splitGridRowsClassName}`
+      ? `grid grid-rows-1 gap-1 p-1 ${splitGridColumnsClassName}`
       : 'block';
   const shouldShowBrowserTab = browserUseEnabled;
   const handleMainPaneFocus = useCallback(() => onFocusPane(null), [onFocusPane]);

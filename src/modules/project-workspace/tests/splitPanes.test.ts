@@ -45,7 +45,7 @@ test('never shows a session twice', () => {
   assert.deepEqual(result.current.splitSessionIds, ['other']);
 });
 
-test('holds at most three split panes', () => {
+test('holds at most two split panes', () => {
   const { result } = renderSplitPanes('main');
 
   for (const id of ['a', 'b', 'c', 'd']) {
@@ -53,7 +53,7 @@ test('holds at most three split panes', () => {
   }
 
   assert.equal(result.current.splitSessionIds.length, MAX_SPLIT_PANES);
-  assert.deepEqual(result.current.splitSessionIds, ['a', 'b', 'c']);
+  assert.deepEqual(result.current.splitSessionIds, ['a', 'b']);
   assert.equal(result.current.isSplitFull, true);
 });
 
