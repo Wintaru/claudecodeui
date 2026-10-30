@@ -617,10 +617,6 @@ export const api = {
       }),
     tts: (text: string, options: ApiRequestOptions = {}) => post('/api/voice/tts', { text }, options),
   },
-
-  system: {
-    update: () => post('/api/system/update'),
-  },
 };
 
 // ---------------------------
