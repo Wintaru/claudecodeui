@@ -1,4 +1,4 @@
-import { access, readdir, readFile } from 'node:fs/promises';
+import { access, readdir, readFile, realpath } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
@@ -9,6 +9,7 @@ import { sessionsService } from '@/modules/providers/index.js';
 import { runGitCommand } from '@/modules/worktrees/index.js';
 import { createSessionContextRouter } from '@/modules/session-context/session-context.routes.js';
 import type { GitHubRepo } from '@/modules/session-context/session-context.helpers.js';
+import { openInEditor } from '@/modules/session-context/session-context-open.service.js';
 import {
   createSessionContextReader,
   type LastReply,
@@ -17,6 +18,7 @@ import {
 import { AppError } from '@/shared/utils.js';
 
 const GH_TIMEOUT_MS = 5000;
+const EDITOR_LAUNCH_DEADLINE_MS = 5000;
 /** The tail of a transcript searched for Claude's last reply; tool rows sit between replies. */
 const LAST_REPLY_SEARCH_DEPTH = 40;
 const TRILLIAN_WORKTREES_CONFIG = path.join(os.homedir(), '.config', 'trillian', 'worktrees.json');
@@ -123,6 +125,37 @@ async function readWorkspaceRoot(): Promise<string | null> {
   }
 }
 
+/**
+ * Runs VS Code's `code` command detached. On Windows cross-spawn runs
+ * `code.cmd` through cmd.exe, which starts even when `code` is missing, so the
+ * result comes from the exit code: `code` hands the arguments to the running
+ * editor and exits at once. A launch still running after the deadline counts
+ * as started, so a slow cmd.exe cannot hold the request.
+ */
+function launchVsCode(args: string[]): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const fail = (detail: string) => reject(new AppError(`Could not start VS Code: ${detail}`, {
+      code: 'EDITOR_LAUNCH_FAILED',
+      statusCode: 500,
+    }));
+    const child = spawn('code', args, { detached: true, stdio: 'ignore', shell: false, windowsHide: true });
+    child.unref();
+    const timer = setTimeout(resolve, EDITOR_LAUNCH_DEADLINE_MS);
+    child.once('error', (error) => {
+      clearTimeout(timer);
+      fail(error.message);
+    });
+    child.once('exit', (code) => {
+      clearTimeout(timer);
+      if (code === 0) {
+        resolve();
+      } else {
+        fail(`code exited with ${code}`);
+      }
+    });
+  });
+}
+
 async function readLastReply(sessionId: string): Promise<LastReply | null> {
   const { messages } = await sessionsService.fetchHistory(sessionId, { limit: LAST_REPLY_SEARCH_DEPTH });
   for (let index = messages.length - 1; index >= 0; index -= 1) {
@@ -158,4 +191,10 @@ export const sessionContextRoutes = createSessionContextRouter({
     return projectPath;
   },
   read: readSessionContext,
+  openInEditor: (input) => openInEditor(input, {
+    runGit: runGitCommand,
+    realPath: (candidatePath) => realpath(candidatePath),
+    readWorkspaceRoot,
+    launchEditor: launchVsCode,
+  }),
 });
