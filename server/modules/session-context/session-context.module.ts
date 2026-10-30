@@ -10,6 +10,7 @@ import { runGitCommand } from '@/modules/worktrees/index.js';
 import { createSessionContextRouter } from '@/modules/session-context/session-context.routes.js';
 import type { GitHubRepo } from '@/modules/session-context/session-context.helpers.js';
 import { openInEditor } from '@/modules/session-context/session-context-open.service.js';
+import { readPullRequestReview, type PullRequestReviewDependencies } from '@/modules/session-context/session-context-review.service.js';
 import {
   createSessionContextReader,
   type LastReply,
@@ -18,13 +19,15 @@ import {
 import { AppError } from '@/shared/utils.js';
 
 const GH_TIMEOUT_MS = 5000;
+/** The review query reads up to 100 threads and 100 checks, which takes longer than a PR lookup. */
+const GH_REVIEW_TIMEOUT_MS = 10000;
 const EDITOR_LAUNCH_DEADLINE_MS = 5000;
 /** The tail of a transcript searched for Claude's last reply; tool rows sit between replies. */
 const LAST_REPLY_SEARCH_DEPTH = 40;
 const TRILLIAN_WORKTREES_CONFIG = path.join(os.homedir(), '.config', 'trillian', 'worktrees.json');
 
 /** Runs `gh` with a deadline; resolves null on any failure, since a PR link is optional. */
-function runGh(args: string[], cwd: string): Promise<string | null> {
+function runGh(args: string[], cwd: string, timeoutMs = GH_TIMEOUT_MS): Promise<string | null> {
   return new Promise((resolve) => {
     const child = spawn('gh', args, { cwd, shell: false });
     let stdout = '';
@@ -32,9 +35,9 @@ function runGh(args: string[], cwd: string): Promise<string | null> {
     let stderr = '';
     const timer = setTimeout(() => {
       child.kill();
-      console.warn(`[session-context] gh ${args.slice(0, 2).join(' ')} timed out after ${GH_TIMEOUT_MS} ms in ${cwd}`);
+      console.warn(`[session-context] gh ${args.slice(0, 2).join(' ')} timed out after ${timeoutMs} ms in ${cwd}`);
       resolve(null);
-    }, GH_TIMEOUT_MS);
+    }, timeoutMs);
     child.stdout?.on('data', (data: Buffer) => {
       stdout += data.toString();
     });
@@ -84,6 +87,18 @@ async function findPullRequest(folderPath: string, branch: string, repo: GitHubR
     return null;
   }
 }
+
+const runReviewQuery: PullRequestReviewDependencies['runGraphQl'] = (query, variables, cwd) => runGh(
+  [
+    'api', 'graphql',
+    '-f', `query=${query}`,
+    '-f', `owner=${variables.owner}`,
+    '-f', `name=${variables.name}`,
+    '-F', `number=${variables.number}`,
+  ],
+  cwd,
+  GH_REVIEW_TIMEOUT_MS,
+);
 
 async function pathExists(candidatePath: string): Promise<boolean> {
   try {
@@ -197,4 +212,5 @@ export const sessionContextRoutes = createSessionContextRouter({
     readWorkspaceRoot,
     launchEditor: launchVsCode,
   }),
+  readReview: (input) => readPullRequestReview(input, { runGit: runGitCommand, runGraphQl: runReviewQuery }),
 });
