@@ -32,7 +32,6 @@ type ProjectMainState = Pick<
   | 'closeSplitPane'
   | 'closeMainPane'
   | 'replaceSplitPane'
-  | 'focusPane'
 >;
 
 type ProjectCommandState = Pick<
@@ -110,11 +109,9 @@ export function ProjectsStateProvider({
       closeSplitPane: state.closeSplitPane,
       closeMainPane: state.closeMainPane,
       replaceSplitPane: state.replaceSplitPane,
-      focusPane: state.focusPane,
     }),
     [
       state.activeTab,
-      state.focusPane,
       state.closeMainPane,
       state.closeSplitPane,
       state.replaceSplitPane,

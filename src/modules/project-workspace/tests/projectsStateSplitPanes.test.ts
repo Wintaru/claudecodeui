@@ -147,32 +147,6 @@ test('an update to another session leaves a split pane\'s target unchanged', asy
   assert.equal(result.current.splitPaneTargets[0], targetBefore);
 });
 
-test('the context target follows the focused pane, and never borrows the main pane for an unresolved one', async () => {
-  localStorage.setItem('cloudcli-split-panes', JSON.stringify(['split-session', 'flaky-session']));
-  sessionDetailsResponse.mockResolvedValue({ ok: false, status: 503 });
-  projectsResponse.mockResolvedValue({ ok: true, json: async () => [project] });
-  const { useProjectsState } = await import('@/modules/project-workspace/hooks/useProjectsState');
-  const { result } = renderHook(() =>
-    useProjectsState({
-      sessionId: 'main-session',
-      navigate: vi.fn(),
-      subscribe: () => () => {},
-      isMobile: false,
-      isSessionProcessing: () => false,
-    }),
-  );
-  await waitFor(() => {
-    assert.equal(result.current.sidebarSharedProps.contextTarget?.session?.id, 'main-session');
-  });
-
-  act(() => result.current.focusPane('split-session'));
-  assert.equal(result.current.sidebarSharedProps.contextTarget?.session?.id, 'split-session');
-
-  // Its project is still unknown: showing the main pane's push command here would name the wrong folder.
-  act(() => result.current.focusPane('flaky-session'));
-  assert.equal(result.current.sidebarSharedProps.contextTarget, null);
-});
-
 test('a change on disk to a split session signals its pane', async () => {
   const { result, dispatch } = await renderWithSplitPane();
 

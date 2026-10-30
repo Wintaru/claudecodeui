@@ -110,37 +110,3 @@ test('a phone-width screen shows no split panes but keeps them stored', () => {
   assert.deepEqual(result.current.splitSessionIds, []);
   assert.equal(localStorage.getItem(STORAGE_KEY), JSON.stringify(['a']));
 });
-
-test('focus follows the pane the user is in, and the main pane is the default', () => {
-  const { result } = renderSplitPanes('main');
-  act(() => result.current.openSessionInSplit('a'));
-  assert.equal(result.current.focusedSplitSessionId, null);
-
-  act(() => result.current.focusPane('a'));
-  assert.equal(result.current.focusedSplitSessionId, 'a');
-
-  act(() => result.current.focusPane(null));
-  assert.equal(result.current.focusedSplitSessionId, null);
-});
-
-test('closing the focused split pane gives focus back to the main pane', () => {
-  const { result } = renderSplitPanes('main');
-  act(() => result.current.openSessionInSplit('a'));
-  act(() => result.current.focusPane('a'));
-
-  act(() => result.current.closeSplitPane('a'));
-  assert.equal(result.current.focusedSplitSessionId, null);
-
-  act(() => result.current.openSessionInSplit('a'));
-  assert.equal(result.current.focusedSplitSessionId, null, 'reopening a pane does not bring back its old focus');
-});
-
-test('a fork in the focused pane keeps the focus on that pane', () => {
-  const { result } = renderSplitPanes('main');
-  act(() => result.current.openSessionInSplit('a'));
-  act(() => result.current.focusPane('a'));
-
-  act(() => result.current.replaceSplitPane('a', 'fork-of-a'));
-
-  assert.equal(result.current.focusedSplitSessionId, 'fork-of-a');
-});

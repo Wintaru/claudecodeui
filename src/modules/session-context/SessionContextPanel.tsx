@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Check, ChevronDown, ChevronRight, Copy, ExternalLink, FileText, GitBranch, RefreshCw } from 'lucide-react';
 import type { TFunction } from 'i18next';
 
-import type { Project, ProjectSession, SessionContext, SessionContextNoteKind, SidebarContextTarget } from '@/shared/types';
+import type { Project, ProjectSession, SessionContext, SessionContextNoteKind, SessionContextTarget } from '@/shared/types';
 import { copyTextToClipboard } from '@/shared/utils';
 import { api, ApiRequestError, readApiJson } from '@/shared/api';
 import { useSessionContext } from '@/modules/session-context/hooks/useSessionContext';
@@ -264,7 +264,7 @@ type SessionContextPanelProps = {
 export default function SessionContextPanel({ project, session }: SessionContextPanelProps) {
   const { t } = useTranslation('sidebar');
   const [isCollapsed, setIsCollapsed] = useState(true);
-  const target = useMemo<SidebarContextTarget | null>(() => (project ? { project, session } : null), [project, session]);
+  const target = useMemo<SessionContextTarget | null>(() => (project ? { project, session } : null), [project, session]);
   const { context, isLoading, hasError, refresh } = useSessionContext(target);
 
   const toggleCollapsed = useCallback(() => setIsCollapsed((previous) => !previous), []);

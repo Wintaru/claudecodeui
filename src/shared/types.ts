@@ -1561,8 +1561,8 @@ export type SidebarSplitViewActions = {
   isSplitFull: boolean;
 };
 
-/** The conversation the sidebar's context panel describes: the focused pane's. */
-export type SidebarContextTarget = {
+/** The conversation a chat pane's context panel describes. */
+export type SessionContextTarget = {
   project: Project;
   /** Null while a new chat has no session yet. */
   session: ProjectSession | null;

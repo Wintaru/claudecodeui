@@ -45,8 +45,6 @@ type WorkspaceMainProps = {
   onCloseSplitPane: (sessionId: string) => void;
   onCloseMainPane: () => void;
   onReplaceSplitPane: (previousSessionId: string, nextSessionId: string) => void;
-  /** Records the pane the user is in: a split pane's session id, or null for the main pane. */
-  onFocusPane: (splitSessionId: string | null) => void;
 };
 
 /** Rendered by ProjectMainRegion to show the selected project's active tab: chat, files, shell, git, tasks, browser or a plugin. */
@@ -73,7 +71,6 @@ function WorkspaceMain({
   onCloseSplitPane,
   onCloseMainPane,
   onReplaceSplitPane,
-  onFocusPane,
 }: WorkspaceMainProps) {
   const preferences = useUiPreferences();
   const { showRawParameters, showThinking, sendByCtrlEnter } = preferences;
@@ -100,7 +97,6 @@ function WorkspaceMain({
       ? `grid grid-rows-1 gap-1 p-1 ${splitGridColumnsClassName}`
       : 'block';
   const shouldShowBrowserTab = browserUseEnabled;
-  const handleMainPaneFocus = useCallback(() => onFocusPane(null), [onFocusPane]);
 
   const {
     editingFile,
@@ -191,7 +187,6 @@ function WorkspaceMain({
               project={selectedProject}
               session={selectedSession}
               onClose={onCloseMainPane}
-              onFocus={handleMainPaneFocus}
               isFramed={isSplitView}
             >
               <WorkspaceErrorBoundary showDetails>
@@ -231,7 +226,6 @@ function WorkspaceMain({
                 externalMessageUpdate={splitExternalUpdates[target.sessionId] ?? 0}
                 onClose={onCloseSplitPane}
                 onReplace={onReplaceSplitPane}
-                onFocusPane={onFocusPane}
               />
             ))}
           </div>

@@ -30,7 +30,6 @@ function ProjectMainRegion({
     closeSplitPane,
     closeMainPane,
     replaceSplitPane,
-    focusPane,
   } = useProjectMainState();
 
   const handleOpenSidebar = useCallback(() => {
@@ -79,7 +78,6 @@ function ProjectMainRegion({
       onCloseSplitPane={closeSplitPane}
       onCloseMainPane={closeMainPane}
       onReplaceSplitPane={replaceSplitPane}
-      onFocusPane={focusPane}
     />
   );
 }

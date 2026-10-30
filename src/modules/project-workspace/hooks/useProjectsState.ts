@@ -8,7 +8,6 @@ import type { ServerEvent,
   LoadingProgress,
   Project,
   ProjectSession,IsSessionProcessing,
-  SidebarContextTarget,
   SidebarSplitViewActions } from '@/shared/types';
 import { mergeProjectSelectionMetadata } from '@/modules/project-workspace/utils/projectSelectionMetadata';
 import { MAX_SPLIT_PANES, useSplitPanes } from '@/modules/project-workspace/hooks/useSplitPanes';
@@ -532,8 +531,6 @@ export function useProjectsState({
     splitSessionIds,
     splitSessionIdsRef,
     isSplitFull,
-    focusedSplitSessionId,
-    focusPane,
     openSessionInSplit,
     closeSplitPane,
     closeMainPane,
@@ -1103,15 +1100,6 @@ export function useProjectsState({
     return nextTargets;
   }, [projects, splitSessionIds, splitSessionLookups]);
 
-  const contextTarget = useMemo<SidebarContextTarget | null>(() => {
-    if (focusedSplitSessionId) {
-      // Never fall back to the main pane here: its push command would be for another folder.
-      const focusedTarget = splitPaneTargets.find((target) => target.sessionId === focusedSplitSessionId);
-      return focusedTarget?.project ? { project: focusedTarget.project, session: focusedTarget.session } : null;
-    }
-    return selectedProject ? { project: selectedProject, session: selectedSession } : null;
-  }, [focusedSplitSessionId, selectedProject, selectedSession, splitPaneTargets]);
-
   useEffect(() => {
     if (isLoadingProjects) {
       return;
@@ -1433,11 +1421,9 @@ export function useProjectsState({
       onCloseSettings: () => setShowSettings(false),
       isMobile,
       splitView,
-      contextTarget,
     }),
     [
       attentionSessionIds,
-      contextTarget,
       handleNewSession,
       handleProjectDelete,
       handleProjectSelect,
@@ -1473,7 +1459,6 @@ export function useProjectsState({
     splitPaneTargets,
     splitExternalUpdates,
     isSplitFull,
-    focusPane,
     handleOpenSessionInSplit,
     closeSplitPane,
     closeMainPane,

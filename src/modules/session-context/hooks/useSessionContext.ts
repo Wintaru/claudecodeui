@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { api, readApiJson } from '@/shared/api';
-import type { SessionContext, SidebarContextTarget } from '@/shared/types';
+import type { SessionContext, SessionContextTarget } from '@/shared/types';
 
 const REQUEST_DELAY_MS = 300;
 
@@ -15,7 +15,7 @@ type SessionContextState = {
 type InFlight = { key: string; controller: AbortController; timer: number };
 
 /**
- * Loads the context panel's facts for the focused conversation. It asks again
+ * Loads the context panel facts for one pane's conversation. It asks again
  * when the target or its last activity changes, and when the window gets focus
  * back, because a push made in another shell leaves no other trace here.
  *
@@ -24,7 +24,7 @@ type InFlight = { key: string; controller: AbortController; timer: number };
  * it cancel would keep the panel on its skeleton for the whole reply. A change
  * for the same target instead asks once more after the running request ends.
  */
-export function useSessionContext(target: SidebarContextTarget | null): SessionContextState {
+export function useSessionContext(target: SessionContextTarget | null): SessionContextState {
   // Keyed by target, so a switch never shows the previous conversation's push command while the next one loads.
   const [loaded, setLoaded] = useState<{ key: string; context: SessionContext } | null>(null);
   const [isLoading, setIsLoading] = useState(false);

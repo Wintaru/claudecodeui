@@ -12,8 +12,6 @@ type ChatPaneFrameProps = {
   project: Project | null;
   session: ProjectSession | null;
   onClose: () => void;
-  /** Called when a click or keyboard focus lands anywhere inside the pane. */
-  onFocus: () => void;
   /** False outside the split view: the frame then adds nothing around its chat. */
   isFramed?: boolean;
   children: ReactNode;
@@ -24,15 +22,13 @@ type ChatPaneFrameProps = {
  * chat, and its context panel. The main chat stays inside this frame when the
  * split view closes, so opening or closing a split does not remount it.
  */
-export function ChatPaneFrame({ project, session, onClose, onFocus, isFramed = true, children }: ChatPaneFrameProps) {
+export function ChatPaneFrame({ project, session, onClose, isFramed = true, children }: ChatPaneFrameProps) {
   // The main pane has a project but no session while a new chat is open.
   const sessionTitle = session ? getSessionTitle(session) : project ? 'New chat' : 'Loading…';
   const projectName = project?.displayName || project?.path || '';
 
   return (
     <div
-      onFocus={onFocus}
-      onPointerDown={onFocus}
       className={isFramed
         ? 'flex min-h-0 min-w-0 flex-col overflow-hidden rounded-md border border-border focus-within:ring-2 focus-within:ring-primary/60'
         : 'flex h-full min-h-0 flex-col'}
@@ -74,7 +70,6 @@ type SplitChatPaneProps = {
   externalMessageUpdate: number;
   onClose: (sessionId: string) => void;
   onReplace: (previousSessionId: string, nextSessionId: string) => void;
-  onFocusPane: (sessionId: string) => void;
 };
 
 /** Rendered by WorkspaceMain for each conversation opened beside the main chat. */
@@ -91,12 +86,10 @@ function SplitChatPane({
   externalMessageUpdate,
   onClose,
   onReplace,
-  onFocusPane,
 }: SplitChatPaneProps) {
   const { sessionId, project, session } = target;
 
   const handleClose = useCallback(() => onClose(sessionId), [onClose, sessionId]);
-  const handleFocus = useCallback(() => onFocusPane(sessionId), [onFocusPane, sessionId]);
   // A fork from this pane opens in this pane, not in the main one.
   const handleNavigateToSession = useCallback(
     (targetSessionId: string) => onReplace(sessionId, targetSessionId),
@@ -104,7 +97,7 @@ function SplitChatPane({
   );
 
   return (
-    <ChatPaneFrame project={project} session={session} onClose={handleClose} onFocus={handleFocus}>
+    <ChatPaneFrame project={project} session={session} onClose={handleClose}>
       {project && session ? (
         <WorkspaceErrorBoundary showDetails>
           <ChatInterface

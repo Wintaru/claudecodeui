@@ -43,8 +43,6 @@ type UseSplitPanesArgs = {
  */
 export function useSplitPanes({ mainSessionId, navigate, isMobile }: UseSplitPanesArgs) {
   const [storedSplitSessionIds, setStoredSplitSessionIds] = useState<string[]>(readStoredSplitSessionIds);
-  // The split pane that last had focus; null means the main pane.
-  const [lastFocusedSplitSessionId, setLastFocusedSplitSessionId] = useState<string | null>(null);
 
   useEffect(() => {
     writeStoredSplitSessionIds(storedSplitSessionIds);
@@ -59,8 +57,6 @@ export function useSplitPanes({ mainSessionId, navigate, isMobile }: UseSplitPan
     setStoredSplitSessionIds((previous) => (
       previous.includes(mainSessionId) ? previous.filter((id) => id !== mainSessionId) : previous
     ));
-    // Choosing a conversation for the main pane is a switch to it.
-    setLastFocusedSplitSessionId(null);
   }, [mainSessionId]);
 
   // A phone-width screen shows the main pane only; the stored list stays for
@@ -69,15 +65,6 @@ export function useSplitPanes({ mainSessionId, navigate, isMobile }: UseSplitPan
   const splitSessionIdsRef = useRef(splitSessionIds);
   splitSessionIdsRef.current = splitSessionIds;
   const isSplitFull = storedSplitSessionIds.length >= MAX_SPLIT_PANES;
-  // A closed or moved pane gives focus back to the main pane.
-  const focusedSplitSessionId = lastFocusedSplitSessionId && splitSessionIds.includes(lastFocusedSplitSessionId)
-    ? lastFocusedSplitSessionId
-    : null;
-
-  /** Records which pane has focus: a split pane's session id, or null for the main pane. */
-  const focusPane = useCallback((splitSessionId: string | null) => {
-    setLastFocusedSplitSessionId(splitSessionId);
-  }, []);
 
   const openSessionInSplit = useCallback((sessionId: string) => {
     if (!mainSessionId) {
@@ -96,7 +83,6 @@ export function useSplitPanes({ mainSessionId, navigate, isMobile }: UseSplitPan
 
   const closeSplitPane = useCallback((sessionId: string) => {
     setStoredSplitSessionIds((previous) => previous.filter((id) => id !== sessionId));
-    setLastFocusedSplitSessionId((previous) => (previous === sessionId ? null : previous));
   }, []);
 
   /** Closes the main pane: the first split pane takes its place, or the workspace goes empty. */
@@ -113,15 +99,12 @@ export function useSplitPanes({ mainSessionId, navigate, isMobile }: UseSplitPan
       }
       return previous.map((id) => (id === previousSessionId ? nextSessionId : id));
     });
-    setLastFocusedSplitSessionId((previous) => (previous === previousSessionId ? nextSessionId : previous));
   }, [mainSessionId]);
 
   return {
     splitSessionIds,
     splitSessionIdsRef,
     isSplitFull,
-    focusedSplitSessionId,
-    focusPane,
     openSessionInSplit,
     closeSplitPane,
     closeMainPane,

@@ -5,12 +5,12 @@ import type { TFunction } from 'i18next';
 import { afterEach, test, vi } from 'vitest';
 
 import { api } from '@/shared/api';
-import type { Project, SessionContext, SidebarContextTarget } from '@/shared/types';
+import type { Project, SessionContext, SessionContextTarget } from '@/shared/types';
 import { describePaneSummary, describePushState, toVsCodeUrl } from '@/modules/session-context/utils/sessionContextFormatting';
 import { useSessionContext } from '@/modules/session-context/hooks/useSessionContext';
 
 /**
- * The context panel shows the focused conversation's push command and links. A
+ * The context panel shows its pane's push command and links. A
  * push command copied while the panel still shows the previous conversation
  * would push the wrong repository, so a target switch must hide the old answer.
  */
@@ -47,7 +47,7 @@ const contextFor = (folderPath: string): SessionContext => ({
   lastReply: null,
 });
 
-const target = (projectId: string, sessionId: string): SidebarContextTarget => ({
+const target = (projectId: string, sessionId: string): SessionContextTarget => ({
   project: { projectId, displayName: projectId, path: `/w/${projectId}`, fullPath: `/w/${projectId}` } as Project,
   session: { id: sessionId },
 });
@@ -90,7 +90,7 @@ test('switching targets hides the previous context until the new one arrives', a
       resolveSecond = resolve;
     }));
 
-  const { result, rerender } = renderHook((props: { target: SidebarContextTarget }) => useSessionContext(props.target), {
+  const { result, rerender } = renderHook((props: { target: SessionContextTarget }) => useSessionContext(props.target), {
     initialProps: { target: target('a', 's1') },
   });
   await waitFor(() => assert.equal(result.current.context?.folderPath, '/w/a'));
@@ -110,11 +110,11 @@ test('a streaming reply does not cancel the running request; it asks once more a
   const spy = vi.spyOn(api, 'sessionContext').mockImplementation(() => new Promise<Response>((resolve) => {
     resolvers.push(resolve);
   }));
-  const withActivity = (lastActivity: string): SidebarContextTarget => ({
+  const withActivity = (lastActivity: string): SessionContextTarget => ({
     ...target('a', 's1'),
     session: { id: 's1', lastActivity },
   });
-  const { result, rerender } = renderHook((props: { target: SidebarContextTarget }) => useSessionContext(props.target), {
+  const { result, rerender } = renderHook((props: { target: SessionContextTarget }) => useSessionContext(props.target), {
     initialProps: { target: withActivity('t0') },
   });
   await waitFor(() => assert.equal(spy.mock.calls.length, 1));
