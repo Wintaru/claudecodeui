@@ -94,6 +94,36 @@ test('switching targets hides the previous context until the new one arrives', a
   await waitFor(() => assert.equal(result.current.context?.folderPath, '/w/b'));
 });
 
+test('a streaming reply does not cancel the running request; it asks once more afterwards', async () => {
+  const resolvers: Array<(response: Response) => void> = [];
+  const spy = vi.spyOn(api, 'sessionContext').mockImplementation(() => new Promise<Response>((resolve) => {
+    resolvers.push(resolve);
+  }));
+  const withActivity = (lastActivity: string): SidebarContextTarget => ({
+    ...target('a', 's1'),
+    session: { id: 's1', lastActivity },
+  });
+  const { result, rerender } = renderHook((props: { target: SidebarContextTarget }) => useSessionContext(props.target), {
+    initialProps: { target: withActivity('t0') },
+  });
+  await waitFor(() => assert.equal(spy.mock.calls.length, 1));
+
+  // Three activity changes while the first request runs.
+  rerender({ target: withActivity('t1') });
+  rerender({ target: withActivity('t2') });
+  rerender({ target: withActivity('t3') });
+  const [firstSignal] = spy.mock.calls[0].slice(2) as [{ signal: AbortSignal }];
+  assert.equal(firstSignal.signal.aborted, false, 'the running request keeps going');
+
+  await act(async () => {
+    resolvers[0](jsonResponse(contextFor('/w/a')));
+  });
+  await waitFor(() => assert.equal(result.current.context?.folderPath, '/w/a'));
+  await waitFor(() => assert.equal(spy.mock.calls.length, 2), { timeout: 2000 });
+  await new Promise((resolve) => setTimeout(resolve, 500));
+  assert.equal(spy.mock.calls.length, 2, 'one follow-up request, not one per change');
+});
+
 test('a window focus asks again for the same target', async () => {
   const spy = vi.spyOn(api, 'sessionContext').mockImplementation(async () => jsonResponse(contextFor('/w/a')));
   const { result } = renderHook(() => useSessionContext(target('a', 's1')));
