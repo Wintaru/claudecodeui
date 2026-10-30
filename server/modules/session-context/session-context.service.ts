@@ -3,9 +3,11 @@ import path from 'node:path';
 import type { GitCommandRunner } from '@/shared/types.js';
 import {
   buildPushCommand,
+  comparablePath,
   extractCodeBlocks,
   isCheckoutNoteFile,
   matchesCheckoutDoc,
+  NOTE_FOLDERS,
   parseGitHubRepo,
   parseIssueNumber,
   type GitHubRepo,
@@ -65,11 +67,6 @@ export type ReadSessionContextInput = { folderPath: string; sessionId: string | 
 
 const PULL_REQUEST_CACHE_MS = 2 * 60 * 1000;
 const NO_PULL_REQUEST_CACHE_MS = 20 * 1000;
-
-const comparablePath = (value: string) => {
-  const normalized = path.resolve(value);
-  return process.platform === 'win32' ? normalized.toLowerCase() : normalized;
-};
 
 type GitErrorLogger = SessionContextDependencies['logError'];
 
@@ -229,15 +226,15 @@ async function readNotes(
     return checkoutNotes;
   }
 
-  const handoffFolder = path.join(workspaceRoot, 'handoffs', path.basename(folderPath));
+  const handoffFolder = path.join(workspaceRoot, NOTE_FOLDERS.handoffs, path.basename(folderPath));
   const [handoffNotes, designDocs, walkthroughs] = await Promise.all([
     inFolder(handoffFolder, 'handoff', (name) => name.toLowerCase().endsWith('.md')),
     match.repoName
-      ? inFolder(path.join(workspaceRoot, 'DesignDocs'), 'designDoc', (name) => matchesCheckoutDoc(name, match))
+      ? inFolder(path.join(workspaceRoot, NOTE_FOLDERS.designDocs), 'designDoc', (name) => matchesCheckoutDoc(name, match))
       : Promise.resolve([]),
     match.repoName
       ? inFolder(
-        path.join(workspaceRoot, 'walkthroughs', match.repoName),
+        path.join(workspaceRoot, NOTE_FOLDERS.walkthroughs, match.repoName),
         'walkthrough',
         (name) => matchesCheckoutDoc(name, { ...match, repoName: null }),
       )

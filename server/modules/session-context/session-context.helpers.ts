@@ -11,6 +11,28 @@ export type PushTarget = {
 
 export type ReplyCodeBlock = { language: string | null; code: string };
 
+/**
+ * Folders under the workspace root that hold Josh's notes. The panel links to
+ * notes in them, and the open endpoint accepts only notes in them.
+ */
+export const NOTE_FOLDERS = {
+  designDocs: 'DesignDocs',
+  handoffs: 'handoffs',
+  walkthroughs: 'walkthroughs',
+} as const;
+
+/** A resolved path in the form used to compare paths: lowercase on Windows, where paths ignore case. */
+export function comparablePath(value: string): string {
+  const resolved = path.resolve(value);
+  return process.platform === 'win32' ? resolved.toLowerCase() : resolved;
+}
+
+/** Whether `child` is `parent` or inside it. */
+export function isInsideFolder(child: string, parent: string): boolean {
+  const relative = path.relative(comparablePath(parent), comparablePath(child));
+  return relative === '' || (relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative));
+}
+
 /** Fenced blocks whose content is a picture, not something to paste into a shell or form. */
 const NON_COPYABLE_LANGUAGES = new Set(['mermaid']);
 
