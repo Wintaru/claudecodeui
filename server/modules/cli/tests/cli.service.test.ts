@@ -22,7 +22,6 @@ function createHarness() {
     packageMetadata: {
       version: '1.2.3',
       homepage: 'https://cloudcli.example',
-      bugsUrl: 'https://cloudcli.example/issues',
     },
     environment,
     fileSystem: {

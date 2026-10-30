@@ -21,11 +21,10 @@ export function createCliApplication(): CliApplication {
   const applicationRoot = findApplicationRoot(getModuleDirectory(import.meta.url));
   const packageMetadataJson = JSON.parse(
     fs.readFileSync(path.join(applicationRoot, 'package.json'), 'utf8'),
-  ) as { version: string; homepage?: string; bugs?: { url?: string } };
+  ) as { version: string; homepage?: string };
   const packageMetadata: CliPackageMetadata = {
     version: packageMetadataJson.version,
     homepage: packageMetadataJson.homepage,
-    bugsUrl: packageMetadataJson.bugs?.url,
   };
   const fileSystem = {
     pathExists: (filePath: string) => fs.existsSync(filePath),
