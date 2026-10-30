@@ -27,3 +27,22 @@ export function describePushState(git: NonNullable<SessionContext['git']>, t: TF
   }
   return parts.length > 0 ? parts.join(' · ') : t('context.push.upToDate', 'Nothing to push');
 }
+
+/** The collapsed bar's one line: branch, PR, and push state, each only when known. */
+export function describePaneSummary(context: SessionContext, t: TFunction): string {
+  if (!context.folderExists) {
+    return t('context.folderMissing', 'Folder removed');
+  }
+  const { git } = context;
+  if (!git) {
+    return t('context.notGit', 'Not a git repository');
+  }
+  const parts = [git.branch ?? t('context.detached', 'detached HEAD')];
+  if (context.pullRequest) {
+    parts.push(t('context.pullRequest', { number: context.pullRequest.number, defaultValue: 'PR #{{number}}' }));
+  }
+  if (git.pushCommand) {
+    parts.push(describePushState(git, t));
+  }
+  return parts.join(' · ');
+}

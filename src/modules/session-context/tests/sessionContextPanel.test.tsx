@@ -6,7 +6,7 @@ import { afterEach, test, vi } from 'vitest';
 
 import { api } from '@/shared/api';
 import type { Project, SessionContext, SidebarContextTarget } from '@/shared/types';
-import { describePushState, toVsCodeUrl } from '@/modules/session-context/utils/sessionContextFormatting';
+import { describePaneSummary, describePushState, toVsCodeUrl } from '@/modules/session-context/utils/sessionContextFormatting';
 import { useSessionContext } from '@/modules/session-context/hooks/useSessionContext';
 
 /**
@@ -15,11 +15,11 @@ import { useSessionContext } from '@/modules/session-context/hooks/useSessionCon
  * would push the wrong repository, so a target switch must hide the old answer.
  */
 
-const t = ((key: string, options?: string | { defaultValue?: string; count?: number }) => {
+const t = ((key: string, options?: string | { defaultValue?: string; [value: string]: unknown }) => {
   if (typeof options === 'string') {
     return options;
   }
-  return (options?.defaultValue ?? key).replace('{{count}}', String(options?.count ?? ''));
+  return (options?.defaultValue ?? key).replace(/\{\{(\w+)\}\}/g, (_match, name: string) => String(options?.[name] ?? ''));
 }) as unknown as TFunction;
 
 const git = (overrides: Partial<NonNullable<SessionContext['git']>> = {}): NonNullable<SessionContext['git']> => ({
@@ -63,6 +63,17 @@ test('describePushState covers no upstream, commits to push, behind, and up to d
   assert.equal(describePushState(git({ ahead: 3 }), t), '3 commits to push');
   assert.equal(describePushState(git({ ahead: 2, behind: 1 }), t), '2 commits to push · 1 behind');
   assert.equal(describePushState(git(), t), 'Nothing to push');
+});
+
+test('describePaneSummary names the branch, the PR, and the push state', () => {
+  const context = contextFor('/w/a');
+  assert.equal(describePaneSummary(context, t), '884-turningPrompt · Nothing to push');
+  assert.equal(
+    describePaneSummary({ ...context, pullRequest: { number: 12, url: 'https://x/12', state: 'OPEN' } }, t),
+    '884-turningPrompt · PR #12 · Nothing to push',
+  );
+  assert.equal(describePaneSummary({ ...context, git: null }, t), 'Not a git repository');
+  assert.equal(describePaneSummary({ ...context, folderExists: false }, t), 'Folder removed');
 });
 
 test('toVsCodeUrl gives one slash after the authority on Windows and POSIX paths', () => {

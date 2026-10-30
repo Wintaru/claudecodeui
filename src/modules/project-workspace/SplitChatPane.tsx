@@ -2,6 +2,7 @@ import React, { useCallback, type ReactNode } from 'react';
 import { X } from 'lucide-react';
 
 import { ChatInterface } from '@/modules/chat';
+import { SessionContextPanel } from '@/modules/session-context';
 import type { SplitPaneTarget } from '@/modules/project-workspace/hooks/useProjectsState';
 import type { Project, ProjectSession } from '@/shared/types';
 import { getSessionTitle } from '@/shared/utils';
@@ -19,9 +20,9 @@ type ChatPaneFrameProps = {
 };
 
 /**
- * One cell of the split view: the conversation's name, a close button, and its
- * chat. The main chat stays inside this frame when the split view closes, so
- * opening or closing a split does not remount it.
+ * One cell of the split view: the conversation's name, a close button, its
+ * chat, and its context panel. The main chat stays inside this frame when the
+ * split view closes, so opening or closing a split does not remount it.
  */
 export function ChatPaneFrame({ project, session, onClose, onFocus, isFramed = true, children }: ChatPaneFrameProps) {
   // The main pane has a project but no session while a new chat is open.
@@ -54,6 +55,7 @@ export function ChatPaneFrame({ project, session, onClose, onFocus, isFramed = t
         </div>
       )}
       <div className="min-h-0 flex-1">{children}</div>
+      <SessionContextPanel project={project} session={session} />
     </div>
   );
 }

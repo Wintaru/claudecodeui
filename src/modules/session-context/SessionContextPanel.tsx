@@ -1,17 +1,17 @@
-import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Check, ChevronDown, ChevronRight, Copy, ExternalLink, FileText, GitBranch, RefreshCw } from 'lucide-react';
 import type { TFunction } from 'i18next';
 
-import type { SessionContext, SessionContextNoteKind, SidebarContextTarget } from '@/shared/types';
+import type { Project, ProjectSession, SessionContext, SessionContextNoteKind, SidebarContextTarget } from '@/shared/types';
 import { copyTextToClipboard } from '@/shared/utils';
 import { api, ApiRequestError, readApiJson } from '@/shared/api';
 import { useSessionContext } from '@/modules/session-context/hooks/useSessionContext';
-import { describePushState, toVsCodeUrl } from '@/modules/session-context/utils/sessionContextFormatting';
+import { describePaneSummary, describePushState, toVsCodeUrl } from '@/modules/session-context/utils/sessionContextFormatting';
 
-const COLLAPSED_STORAGE_KEY = 'cloudcli-context-panel-collapsed';
 const COPIED_FEEDBACK_MS = 1500;
-/** About 17 rem, but never more than a third of the sidebar, so the conversation list keeps most of the height. */
-const EXPANDED_HEIGHT_CLASS = 'h-[min(17rem,33%)]';
+/** Expanded, the panel takes this share of its pane; the chat keeps the rest. */
+const EXPANDED_HEIGHT_CLASS = 'h-[40%]';
 
 const NOTE_KIND_LABELS: Record<SessionContextNoteKind, [key: string, fallback: string]> = {
   checkout: ['context.notes.checkout', 'Notes'],
@@ -20,22 +20,6 @@ const NOTE_KIND_LABELS: Record<SessionContextNoteKind, [key: string, fallback: s
   designDoc: ['context.notes.designDoc', 'Design doc'],
   walkthrough: ['context.notes.walkthrough', 'Walkthrough'],
 };
-
-function readCollapsed(): boolean {
-  try {
-    return localStorage.getItem(COLLAPSED_STORAGE_KEY) === 'true';
-  } catch {
-    return false;
-  }
-}
-
-function writeCollapsed(isCollapsed: boolean): void {
-  try {
-    localStorage.setItem(COLLAPSED_STORAGE_KEY, String(isCollapsed));
-  } catch {
-    // Storage unavailable: the panel still collapses for this page load.
-  }
-}
 
 function CopyButton({ text, label, t }: { text: string; label: string; t: TFunction }) {
   const [isCopied, setIsCopied] = useState(false);
@@ -243,7 +227,7 @@ function ContextBody({ context, onOpenInEditor, t }: ContextBodyProps) {
   );
 }
 
-/** The Push and Where sections' shape, shown while the focused conversation's context loads. */
+/** The Push and Where sections' shape, shown while the pane's context loads. */
 function ContextSkeleton({ label }: { label: string }) {
   return (
     <div className="animate-pulse space-y-3" role="status" aria-label={label}>
@@ -266,24 +250,26 @@ function ContextSkeleton({ label }: { label: string }) {
   );
 }
 
-type SidebarContextPanelProps = {
-  target: SidebarContextTarget | null;
-  t: TFunction;
+type SessionContextPanelProps = {
+  project: Project | null;
+  /** Null while a new chat has no session yet; the panel still shows the folder's facts. */
+  session: ProjectSession | null;
 };
 
-/** Used by the sidebar module, rendered by SidebarContent between the list and the footer: what Josh needs at hand for the focused conversation. */
-export default function SidebarContextPanel({ target, t }: SidebarContextPanelProps) {
-  const [isCollapsed, setIsCollapsed] = useState(readCollapsed);
-  const { context, isLoading, hasError, refresh } = useSessionContext(isCollapsed ? null : target);
+/**
+ * Used by the project-workspace module: ChatPaneFrame renders one at the
+ * bottom of every chat pane, for that pane's own conversation. Collapsed, it
+ * is a one-line summary, so a short pane keeps its room for the chat.
+ */
+export default function SessionContextPanel({ project, session }: SessionContextPanelProps) {
+  const { t } = useTranslation('sidebar');
+  const [isCollapsed, setIsCollapsed] = useState(true);
+  const target = useMemo<SidebarContextTarget | null>(() => (project ? { project, session } : null), [project, session]);
+  const { context, isLoading, hasError, refresh } = useSessionContext(target);
 
-  const toggleCollapsed = useCallback(() => {
-    setIsCollapsed((previous) => {
-      writeCollapsed(!previous);
-      return !previous;
-    });
-  }, []);
+  const toggleCollapsed = useCallback(() => setIsCollapsed((previous) => !previous), []);
 
-  const projectId = target?.project.projectId ?? null;
+  const projectId = project?.projectId ?? null;
   const handleOpenInEditor = useCallback((targetPath: string) => {
     if (!projectId) {
       return;
@@ -306,25 +292,23 @@ export default function SidebarContextPanel({ target, t }: SidebarContextPanelPr
     return null;
   }
 
-  const projectName = target.project.displayName || target.project.path;
+  const summary = context ? describePaneSummary(context, t) : t('context.loading', 'Loading…');
 
-  // A fixed height, so switching conversations never resizes the list above it.
   return (
-    <div className={`hidden min-h-0 flex-shrink-0 flex-col md:flex ${isCollapsed ? '' : EXPANDED_HEIGHT_CLASS}`}>
-      <div className="nav-divider" />
-      <div className="flex items-center gap-1 px-2 pt-1.5">
+    <div className={`hidden min-h-0 flex-shrink-0 flex-col border-t border-border md:flex ${isCollapsed ? '' : EXPANDED_HEIGHT_CLASS}`}>
+      <div className="flex items-center gap-1 px-1.5 py-0.5">
         <button
           type="button"
           onClick={toggleCollapsed}
           aria-expanded={!isCollapsed}
-          className="flex min-w-0 flex-1 items-center gap-1.5 rounded-lg px-1.5 py-1 text-left transition-colors hover:bg-accent/60"
+          className="flex min-w-0 flex-1 items-center gap-1.5 rounded px-1 py-0.5 text-left transition-colors hover:bg-accent/60"
         >
           {isCollapsed
             ? <ChevronRight className="h-3.5 w-3.5 flex-shrink-0 text-muted-foreground" aria-hidden />
             : <ChevronDown className="h-3.5 w-3.5 flex-shrink-0 text-muted-foreground" aria-hidden />}
           <span className="text-xs font-medium text-foreground">{t('context.title', 'Context')}</span>
-          <span className="min-w-0 truncate text-[11px] text-muted-foreground" title={projectName}>
-            {projectName}
+          <span className="min-w-0 truncate text-[11px] text-muted-foreground" title={summary}>
+            {summary}
           </span>
         </button>
         {!isCollapsed && (
