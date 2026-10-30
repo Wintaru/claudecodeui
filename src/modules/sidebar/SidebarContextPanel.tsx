@@ -9,6 +9,8 @@ import { describePushState, toVsCodeUrl } from '@/modules/sidebar/utils/sessionC
 
 const COLLAPSED_STORAGE_KEY = 'cloudcli-context-panel-collapsed';
 const COPIED_FEEDBACK_MS = 1500;
+/** About 17 rem, but never more than a third of the sidebar, so the conversation list keeps most of the height. */
+const EXPANDED_HEIGHT_CLASS = 'h-[min(17rem,33%)]';
 
 const NOTE_KIND_LABELS: Record<SessionContextNoteKind, [key: string, fallback: string]> = {
   checkout: ['context.notes.checkout', 'Notes'],
@@ -221,6 +223,29 @@ function ContextBody({ context, t }: { context: SessionContext; t: TFunction }) 
   );
 }
 
+/** The Push and Where sections' shape, shown while the focused conversation's context loads. */
+function ContextSkeleton({ label }: { label: string }) {
+  return (
+    <div className="animate-pulse space-y-3" role="status" aria-label={label}>
+      <div className="space-y-1">
+        <div className="mx-1 h-2.5 w-10 rounded bg-muted" />
+        <div className="h-10 rounded-md bg-muted/60" />
+      </div>
+      <div className="space-y-1.5">
+        <div className="mx-1 h-2.5 w-12 rounded bg-muted" />
+        <div className="mx-1 h-3 w-5/6 rounded bg-muted/60" />
+        <div className="mx-1 h-3 w-2/3 rounded bg-muted/60" />
+        <div className="mx-1 h-3 w-1/2 rounded bg-muted/60" />
+      </div>
+      <div className="space-y-1.5">
+        <div className="mx-1 h-2.5 w-14 rounded bg-muted" />
+        <div className="mx-1 h-3 w-1/3 rounded bg-muted/60" />
+        <div className="mx-1 h-3 w-1/4 rounded bg-muted/60" />
+      </div>
+    </div>
+  );
+}
+
 type SidebarContextPanelProps = {
   target: SidebarContextTarget | null;
   t: TFunction;
@@ -243,10 +268,10 @@ export default function SidebarContextPanel({ target, t }: SidebarContextPanelPr
   }
 
   const projectName = target.project.displayName || target.project.path;
-  const branch = context?.git?.branch;
 
+  // A fixed height, so switching conversations never resizes the list above it.
   return (
-    <div className="hidden max-h-[50%] min-h-0 flex-shrink-0 flex-col md:flex">
+    <div className={`hidden min-h-0 flex-shrink-0 flex-col md:flex ${isCollapsed ? '' : EXPANDED_HEIGHT_CLASS}`}>
       <div className="nav-divider" />
       <div className="flex items-center gap-1 px-2 pt-1.5">
         <button
@@ -260,7 +285,7 @@ export default function SidebarContextPanel({ target, t }: SidebarContextPanelPr
             : <ChevronDown className="h-3.5 w-3.5 flex-shrink-0 text-muted-foreground" aria-hidden />}
           <span className="text-xs font-medium text-foreground">{t('context.title', 'Context')}</span>
           <span className="min-w-0 truncate text-[11px] text-muted-foreground" title={projectName}>
-            {projectName}{branch ? ` · ${branch}` : ''}
+            {projectName}
           </span>
         </button>
         {!isCollapsed && (
@@ -276,7 +301,7 @@ export default function SidebarContextPanel({ target, t }: SidebarContextPanelPr
         )}
       </div>
       {!isCollapsed && (
-        <div className="min-h-0 overflow-y-auto overscroll-contain px-2 pb-2 pt-1">
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 pb-2 pt-1">
           {context && hasError && (
             <p className="mb-2 px-1 text-[11px] text-amber-700 dark:text-amber-300" role="status">
               {t('context.refreshFailed', 'Refresh failed. This may be out of date.')}
@@ -287,7 +312,7 @@ export default function SidebarContextPanel({ target, t }: SidebarContextPanelPr
           ) : hasError ? (
             <p className="px-1 text-[11px] text-muted-foreground">{t('context.loadFailed', 'Could not load the context.')}</p>
           ) : (
-            <p className="px-1 text-[11px] text-muted-foreground">{t('context.loading', 'Loading…')}</p>
+            <ContextSkeleton label={t('context.loading', 'Loading…')} />
           )}
         </div>
       )}
