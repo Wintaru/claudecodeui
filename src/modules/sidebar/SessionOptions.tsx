@@ -185,7 +185,9 @@ export default function SessionOptions({
             ...(canOpenInSplit && splitView ? [{
               key: 'open-in-split',
               label: 'Open in split',
-              description: splitView.isSplitFull ? 'Close a pane first (4 open).' : 'Show it beside the open conversation.',
+              description: splitView.isSplitFull
+                ? `Close a pane first (${splitView.maxPanes} open).`
+                : 'Show it beside the open conversation.',
               icon: Columns2,
               disabled: splitView.isSplitFull,
               onSelect: () => splitView.openSessionInSplit(sessionId),

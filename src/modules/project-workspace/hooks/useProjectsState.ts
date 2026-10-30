@@ -10,7 +10,7 @@ import type { ServerEvent,
   ProjectSession,IsSessionProcessing,
   SidebarSplitViewActions } from '@/shared/types';
 import { mergeProjectSelectionMetadata } from '@/modules/project-workspace/utils/projectSelectionMetadata';
-import { useSplitPanes } from '@/modules/project-workspace/hooks/useSplitPanes';
+import { MAX_SPLIT_PANES, useSplitPanes } from '@/modules/project-workspace/hooks/useSplitPanes';
 import { readSelectedProvider } from '@/shared/selectedProvider';
 
 type UseProjectsStateArgs = {
@@ -1392,7 +1392,12 @@ export function useProjectsState({
   const splitView = useMemo<SidebarSplitViewActions | undefined>(() => (
     isMobile
       ? undefined
-      : { openSessionInSplit: handleOpenSessionInSplit, splitSessionIds: new Set(splitSessionIds), isSplitFull }
+      : {
+        openSessionInSplit: handleOpenSessionInSplit,
+        splitSessionIds: new Set(splitSessionIds),
+        maxPanes: MAX_SPLIT_PANES + 1,
+        isSplitFull,
+      }
   ), [handleOpenSessionInSplit, isMobile, isSplitFull, splitSessionIds]);
 
   const sidebarSharedProps = useMemo(

@@ -24,6 +24,7 @@ const noop = () => {};
 const splitView = (overrides: Partial<SidebarSplitViewActions> = {}): SidebarSplitViewActions => ({
   openSessionInSplit: vi.fn(),
   splitSessionIds: new Set<string>(),
+  maxPanes: 4,
   isSplitFull: false,
   ...overrides,
 });

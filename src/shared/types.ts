@@ -1555,7 +1555,9 @@ export type SidebarSplitViewActions = {
   openSessionInSplit: (sessionId: string) => void;
   /** Sessions already in a split pane; their rows, like the main pane's, offer no "Open in split". */
   splitSessionIds: ReadonlySet<string>;
-  /** Four conversations show: the item stays, disabled. */
+  /** The most conversations on screen at once, the main pane included. */
+  maxPanes: number;
+  /** `maxPanes` conversations show: the item stays, disabled. */
   isSplitFull: boolean;
 };
 
