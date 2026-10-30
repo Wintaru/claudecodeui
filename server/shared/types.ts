@@ -1628,7 +1628,6 @@ export type CliEnvironment = Record<string, string | undefined>;
 export type CliPackageMetadata = {
   version: string;
   homepage?: string;
-  bugsUrl?: string;
 };
 
 /**

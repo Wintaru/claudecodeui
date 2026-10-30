@@ -19,8 +19,6 @@ type CliServiceDependencies = {
   fileSystem: CliFileSystem;
   output: CliOutput;
   sandboxService: SandboxCommandService;
-  getLatestPackageVersion(): Promise<string>;
-  updateGlobalPackage(): void;
   startServer(): Promise<void>;
   startBrowserUseMcp(): Promise<void>;
 };
@@ -65,16 +63,6 @@ function parseCliArguments(argumentsList: string[]): ParsedCliArguments {
   }
 
   return parsedArguments;
-}
-
-function isNewerVersion(candidateVersion: string, currentVersion: string): boolean {
-  const candidateParts = candidateVersion.split('.').map(Number);
-  const currentParts = currentVersion.split('.').map(Number);
-  for (let partIndex = 0; partIndex < 3; partIndex += 1) {
-    if (candidateParts[partIndex] > currentParts[partIndex]) return true;
-    if (candidateParts[partIndex] < currentParts[partIndex]) return false;
-  }
-  return false;
 }
 
 function showStatus(dependencies: CliServiceDependencies): void {
@@ -139,7 +127,6 @@ Commands:
   sandbox          Manage Docker sandbox environments
   browser-use-mcp  Run Browser MCP stdio server
   status           Show configuration and data locations
-  update           Update to the latest version
   help             Show this help information
   version          Show version information
 
@@ -164,9 +151,6 @@ Environment Variables:
 
 Documentation:
   ${dependencies.packageMetadata.homepage || 'https://github.com/siteboon/claudecodeui'}
-
-Report Issues:
-  ${dependencies.packageMetadata.bugsUrl || 'https://github.com/siteboon/claudecodeui/issues'}
 `);
 }
 
@@ -176,46 +160,6 @@ Report Issues:
  * cross-module startup dependency is explicit and required.
  */
 export function createCliService(dependencies: CliServiceDependencies): CliApplication {
-  const checkForUpdates = async (silent = false): Promise<boolean> => {
-    try {
-      const latestVersion = await dependencies.getLatestPackageVersion();
-      const currentVersion = dependencies.packageMetadata.version;
-      if (isNewerVersion(latestVersion, currentVersion)) {
-        dependencies.output.log(`\n${terminalTextStyles.warn('[UPDATE]')} New version available: ${terminalTextStyles.bright(latestVersion)} (current: ${currentVersion})`);
-        dependencies.output.log(`         Run ${terminalTextStyles.bright('cloudcli update')} to update\n`);
-        return true;
-      }
-      if (!silent) {
-        dependencies.output.log(`${terminalTextStyles.ok('[OK]')} You are on the latest version (${currentVersion})`);
-      }
-      return false;
-    } catch {
-      if (!silent) {
-        dependencies.output.log(`${terminalTextStyles.warn('[WARN]')} Could not check for updates`);
-      }
-      return false;
-    }
-  };
-
-  const updatePackage = async (): Promise<void> => {
-    dependencies.output.log(`${terminalTextStyles.info('[INFO]')} Checking for updates...`);
-    const hasUpdate = await checkForUpdates(true);
-    if (!hasUpdate) {
-      dependencies.output.log(`${terminalTextStyles.ok('[OK]')} Already on the latest version (${dependencies.packageMetadata.version})`);
-      return;
-    }
-
-    try {
-      dependencies.output.log(`${terminalTextStyles.info('[INFO]')} Updating ${dependencies.packageMetadata.version}...`);
-      dependencies.updateGlobalPackage();
-      dependencies.output.log(`${terminalTextStyles.ok('[OK]')} Update complete! Restart cloudcli to use the new version.`);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      dependencies.output.error(`${terminalTextStyles.error('[ERROR]')} Update failed: ${message}`);
-      dependencies.output.log(`${terminalTextStyles.tip('[TIP]')} Try running manually: npm update -g @cloudcli-ai/cloudcli`);
-    }
-  };
-
   return {
     async run(argumentsList) {
       const parsedArguments = parseCliArguments(argumentsList);
@@ -230,7 +174,6 @@ export function createCliService(dependencies: CliServiceDependencies): CliAppli
 
       switch (parsedArguments.command) {
         case 'start':
-          void checkForUpdates(true);
           await dependencies.startServer();
           return 0;
         case 'sandbox':
@@ -247,9 +190,6 @@ export function createCliService(dependencies: CliServiceDependencies): CliAppli
           return 0;
         case 'version':
           dependencies.output.log(dependencies.packageMetadata.version);
-          return 0;
-        case 'update':
-          await updatePackage();
           return 0;
         default:
           dependencies.output.error(`\n❌ Unknown command: ${parsedArguments.command}`);
