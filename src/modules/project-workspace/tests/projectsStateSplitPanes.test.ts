@@ -95,12 +95,13 @@ test('activity in a split pane does not mark it unread', async () => {
 });
 
 test('a split pane resolves a session past the loaded pages, and closes on an unknown one', async () => {
-  localStorage.setItem('cloudcli-split-panes', JSON.stringify(['older-session', 'gone-session']));
-  sessionDetailsResponse.mockImplementation(async (sessionId: string) => (
-    sessionId === 'older-session'
-      ? { ok: true, json: async () => ({ data: { summary: 'Older', provider: 'claude', project: { projectId: 'project-1' } } }) }
-      : { ok: false }
-  ));
+  localStorage.setItem('cloudcli-split-panes', JSON.stringify(['older-session', 'gone-session', 'flaky-session']));
+  sessionDetailsResponse.mockImplementation(async (sessionId: string) => {
+    if (sessionId === 'older-session') {
+      return { ok: true, json: async () => ({ data: { summary: 'Older', provider: 'claude', project: { projectId: 'project-1' } } }) };
+    }
+    return { ok: false, status: sessionId === 'gone-session' ? 404 : 503 };
+  });
   projectsResponse.mockResolvedValue({ ok: true, json: async () => [project] });
   const { useProjectsState } = await import('@/modules/project-workspace/hooks/useProjectsState');
 
@@ -114,14 +115,27 @@ test('a split pane resolves a session past the loaded pages, and closes on an un
     }),
   );
 
+  // A failure other than "not found" keeps the pane, to try again later.
   await waitFor(() => {
-    assert.deepEqual(result.current.splitSessionIds, ['older-session']);
+    assert.deepEqual(result.current.splitSessionIds, ['older-session', 'flaky-session']);
   });
   await waitFor(() => {
     const [target] = result.current.splitPaneTargets;
     assert.equal(target.session?.summary, 'Older');
     assert.equal(target.project?.projectId, 'project-1');
   });
+});
+
+test('an update to another session leaves a split pane\'s target unchanged', async () => {
+  const { result, dispatch } = await renderWithSplitPane();
+  const [targetBefore] = result.current.splitPaneTargets;
+
+  dispatch(upsert({ ...otherSession, summary: 'Other, renamed' }));
+
+  await waitFor(() => {
+    assert.equal(result.current.projects[0].sessions?.find((session) => session.id === 'other-session')?.summary, 'Other, renamed');
+  });
+  assert.equal(result.current.splitPaneTargets[0], targetBefore);
 });
 
 test('a change on disk to a split session signals its pane', async () => {

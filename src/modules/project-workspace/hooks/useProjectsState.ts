@@ -83,6 +83,7 @@ type ProjectSessionPage = Pick<Project, 'sessions' | 'sessionMeta'>;
 const DEFAULT_PROVIDER: LLMProvider = 'claude';
 
 const serialize = (value: unknown) => JSON.stringify(value ?? null);
+const HTTP_NOT_FOUND = 404;
 
 const getSessionProvider = (session: ProjectSession): LLMProvider => {
   const provider = session.__provider ?? session.provider;
@@ -110,7 +111,17 @@ export type SplitPaneTarget = {
  * when it is not in the active project list (e.g. archived), a minimal entry
  * so the chat view still gets its paths.
  */
-const projectFromSessionDetails = (details: SessionDetails, loadedProjects: Project[]): Project | null => {
+/** A project's identity for a chat view: the fields it reads, not its session list. */
+const projectIdentity = (project: Project | null) => (
+  project && [project.projectId, project.path, project.fullPath, project.displayName]
+);
+
+const isSameSplitPaneTarget = (previous: SplitPaneTarget, next: SplitPaneTarget): boolean => (
+  serialize(previous.session) === serialize(next.session)
+  && serialize(projectIdentity(previous.project)) === serialize(projectIdentity(next.project))
+);
+
+const projectFromSessionDetails =(details: SessionDetails, loadedProjects: Project[]): Project | null => {
   const projectId = details.project?.projectId;
   if (!projectId) {
     return null;
@@ -1067,15 +1078,27 @@ export function useProjectsState({
   const [splitSessionLookups, setSplitSessionLookups] = useState<Record<string, SplitPaneTarget>>({});
   const splitLookupsStartedRef = useRef(new Set<string>());
 
-  const splitPaneTargets = useMemo<SplitPaneTarget[]>(() => splitSessionIds.map((splitSessionId) => {
-    for (const project of projects) {
-      const match = project.sessions?.find((session) => session.id === splitSessionId);
-      if (match) {
-        return { sessionId: splitSessionId, project, session: normalizeSessionProvider(match) };
+  // `projects` changes on every upsert of any session, and a pane's chat sends a
+  // new subscribe whenever its session or project object changes. A pane keeps
+  // its previous target while its session and project are unchanged, as the
+  // main pane keeps `selectedSession`.
+  const previousSplitPaneTargetsRef = useRef(new Map<string, SplitPaneTarget>());
+  const splitPaneTargets = useMemo<SplitPaneTarget[]>(() => {
+    const nextTargets = splitSessionIds.map((splitSessionId): SplitPaneTarget => {
+      for (const project of projects) {
+        const match = project.sessions?.find((session) => session.id === splitSessionId);
+        if (match) {
+          return { sessionId: splitSessionId, project, session: normalizeSessionProvider(match) };
+        }
       }
-    }
-    return splitSessionLookups[splitSessionId] ?? { sessionId: splitSessionId, project: null, session: null };
-  }), [projects, splitSessionIds, splitSessionLookups]);
+      return splitSessionLookups[splitSessionId] ?? { sessionId: splitSessionId, project: null, session: null };
+    }).map((target) => {
+      const previous = previousSplitPaneTargetsRef.current.get(target.sessionId);
+      return previous && isSameSplitPaneTarget(previous, target) ? previous : target;
+    });
+    previousSplitPaneTargetsRef.current = new Map(nextTargets.map((target) => [target.sessionId, target]));
+    return nextTargets;
+  }, [projects, splitSessionIds, splitSessionLookups]);
 
   useEffect(() => {
     if (isLoadingProjects) {
@@ -1091,8 +1114,10 @@ export function useProjectsState({
 
       void (async () => {
         let details: SessionDetails | null = null;
+        let isUnknownSession = false;
         try {
           const response = await api.sessionDetails(splitSessionId);
+          isUnknownSession = response.status === HTTP_NOT_FOUND;
           if (response.ok) {
             details = ((await response.json()) as SessionDetailsApiPayload).data ?? null;
           }
@@ -1101,7 +1126,13 @@ export function useProjectsState({
         }
 
         if (!details) {
-          closeSplitPane(splitSessionId);
+          // Only a session the backend does not know closes its pane. Any other
+          // failure (a restart, a timeout) keeps it, to try again on the next
+          // project update.
+          splitLookupsStartedRef.current.delete(splitSessionId);
+          if (isUnknownSession) {
+            closeSplitPane(splitSessionId);
+          }
           return;
         }
         if (typeof details.sessionId === 'string' && details.sessionId && details.sessionId !== splitSessionId) {
@@ -1180,7 +1211,7 @@ export function useProjectsState({
 
       if (selectedSession?.id === sessionIdToDelete) {
         setSelectedSession(null);
-        navigate('/');
+        closeMainPane();
       }
       closeSplitPane(sessionIdToDelete);
 
@@ -1188,7 +1219,7 @@ export function useProjectsState({
         prevProjects.map((project) => removeSessionFromProject(project, sessionIdToDelete)),
       );
     },
-    [clearSessionAttention, closeSplitPane, navigate, selectedSession?.id],
+    [clearSessionAttention, closeMainPane, closeSplitPane, selectedSession?.id],
   );
 
   const handleOpenSessionInSplit = useCallback(

@@ -22,7 +22,8 @@ type ChatPaneFrameProps = {
  * opening or closing a split does not remount it.
  */
 export function ChatPaneFrame({ project, session, onClose, isFramed = true, children }: ChatPaneFrameProps) {
-  const sessionTitle = session ? getSessionTitle(session) : 'Loading…';
+  // The main pane has a project but no session while a new chat is open.
+  const sessionTitle = session ? getSessionTitle(session) : project ? 'New chat' : 'Loading…';
   const projectName = project?.displayName || project?.path || '';
 
   return (
