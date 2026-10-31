@@ -12,7 +12,8 @@ type WorkspacePathFieldProps = {
   value: string;
   disabled?: boolean;
   onChange: (path: string) => void;
-  onAdvanceToConfirm: () => void;
+  /** Called with the chosen path, which the parent's state may not hold yet. */
+  onAdvanceToConfirm: (selectedPath: string) => void;
 };
 
 /** Rendered by StepConfiguration to enter the workspace path with folder autocompletion and a browse button. */
@@ -76,7 +77,7 @@ export default function WorkspacePathField({
       onChange(selectedPath);
       setShowFolderBrowser(false);
       if (advanceToConfirm) {
-        onAdvanceToConfirm();
+        onAdvanceToConfirm(selectedPath);
       }
     },
     [onAdvanceToConfirm, onChange],

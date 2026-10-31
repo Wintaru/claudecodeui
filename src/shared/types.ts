@@ -1291,6 +1291,15 @@ export type WizardFormState = {
   newGithubToken: string;
 };
 
+/**
+ * The folder the wizard added or cloned, handed to the sidebar so it can open
+ * a new chat there. `alreadyAdded` also carries the path the user picked, for
+ * a server that answers a duplicate without the existing project.
+ */
+export type OpenedFolder =
+  | { kind: 'added'; project: Project | null }
+  | { kind: 'alreadyAdded'; path: string; project: Project | null };
+
 // ---------------------------
 
 //----------------- PROJECT WORKSPACE ------------

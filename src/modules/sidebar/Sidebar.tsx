@@ -8,7 +8,8 @@ import { useSidebarController } from '@/modules/sidebar/hooks/useSidebarControll
 import { useTaskMaster, useTasksSettings } from '@/modules/task-master';
 import { usePaletteOps } from '@/modules/command-palette';
 import { useBackgroundSessionIdSet, useBusySessionIdSet } from '@/shared/context/SessionProtectionContext';
-import type { LLMProvider, LoadingProgress, MCPServerStatus, Project, ProjectSession, SessionSelectOptions, SidebarProjectListProps, SidebarSplitViewActions } from '@/shared/types';
+import type { LLMProvider, LoadingProgress, MCPServerStatus, OpenedFolder, Project, ProjectSession, SessionSelectOptions, SidebarProjectListProps, SidebarSplitViewActions } from '@/shared/types';
+import { isSameFolderPath } from '@/modules/sidebar/utils/sidebarProjectFormatting';
 import SidebarCollapsed from '@/modules/sidebar/SidebarCollapsed';
 import SidebarContent from '@/modules/sidebar/SidebarContent';
 import SidebarModals from '@/modules/sidebar/SidebarModals';
@@ -173,8 +174,17 @@ function Sidebar({
     document.body.classList.toggle('pwa-mode', isPWA);
   }, [isPWA]);
 
-  const handleProjectCreated = () => {
+  // A folder is added to start a conversation in it, so open a new chat there.
+  const handleFolderOpened = (opened: OpenedFolder) => {
     void paletteOps.refreshProjects();
+    const project = opened.kind === 'added'
+      ? opened.project
+      : opened.project
+        ?? projects.find((candidate) => isSameFolderPath(candidate.fullPath, opened.path))
+        ?? null;
+    if (project) {
+      onNewSession(project);
+    }
   };
 
   // Stable so memo() on the row components can bail out; an inline arrow here
@@ -244,7 +254,7 @@ function Sidebar({
         onCloseSettings={onCloseSettings}
         showNewProject={showNewProject}
         onCloseNewProject={() => setShowNewProject(false)}
-        onProjectCreated={handleProjectCreated}
+        onFolderOpened={handleFolderOpened}
         pendingDeletion={pendingDeletion}
         onCancelDeletion={() => setPendingDeletion(null)}
         onConfirmDeleteProject={confirmDeleteProject}

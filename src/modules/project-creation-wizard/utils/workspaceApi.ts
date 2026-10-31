@@ -1,5 +1,5 @@
 import { api } from '@/shared/api';
-import type { FolderSuggestion, GithubTokenCredential, TokenMode } from '@/shared/types';
+import type { FolderSuggestion, GithubTokenCredential, OpenedFolder, Project, TokenMode } from '@/shared/types';
 
 type CredentialsResponse = {
   credentials?: GithubTokenCredential[];
@@ -133,15 +133,36 @@ export const createFolderInFilesystem = async (folderPath: string) => {
   return data.path || folderPath;
 };
 
-export const createProjectRequest = async (payload: CreateProjectPayload) => {
+/** The project in a create or clone response, or null when the response lacks one. */
+export const toCreatedProject = (value: unknown): Project | null => {
+  if (!value || typeof value !== 'object') {
+    return null;
+  }
+  const fields = value as Record<string, unknown>;
+  const { projectId, fullPath, displayName } = fields;
+  if (typeof projectId !== 'string' || typeof fullPath !== 'string' || typeof displayName !== 'string') {
+    return null;
+  }
+  return { ...fields, projectId, fullPath, displayName };
+};
+
+/**
+ * Adds a folder as a project. A folder that already is one is not an error
+ * here: the caller opens a new chat in it either way.
+ */
+export const openFolderRequest = async (payload: CreateProjectPayload): Promise<OpenedFolder> => {
   const response = await api.createProject(payload);
   const data = await parseJson<CreateProjectResponse>(response);
 
-  if (!response.ok) {
-    throw new Error(resolveCreateProjectErrorMessage(data) || 'Failed to create project');
+  if (response.ok) {
+    return { kind: 'added', project: toCreatedProject(data.project) };
   }
-
-  return data.project;
+  if (typeof data.error === 'object' && data.error?.code === 'PROJECT_ALREADY_EXISTS') {
+    const details = data.error.details;
+    const existing = details && typeof details === 'object' ? (details as { project?: unknown }).project : null;
+    return { kind: 'alreadyAdded', path: payload.path, project: toCreatedProject(existing) };
+  }
+  throw new Error(resolveCreateProjectErrorMessage(data) || 'Failed to create project');
 };
 
 type StartCloneResponse = {

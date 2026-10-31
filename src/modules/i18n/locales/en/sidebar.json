@@ -43,7 +43,7 @@
   "tooltips": {
     "viewEnvironments": "View Environments",
     "hideSidebar": "Hide sidebar",
-    "createProject": "Create new project",
+    "createProject": "Add a folder and start a chat in it",
     "refresh": "Refresh projects and sessions (Ctrl+R)",
     "renameProject": "Rename project (F2)",
     "deleteProject": "Remove project from sidebar (Delete)",
@@ -70,6 +70,7 @@
   "actions": {
     "refresh": "Refresh",
     "settings": "Settings",
+    "addFolder": "Add folder",
     "collapseAll": "Collapse All",
     "expandAll": "Expand All",
     "cancel": "Cancel",

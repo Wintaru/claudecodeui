@@ -141,6 +141,19 @@ export const sortProjects = (
   return byName;
 };
 
+// Looser than the server's `normalizeProjectPath`, which lower-cases only the
+// drive letter: a path typed by the user or read from a `.git` file can differ
+// in folder-name case, and Windows treats those as the same folder.
+const toComparableFolderPath = (folderPath: string): string => {
+  const trimmed = folderPath.trim().replace(/[\\/]+$/, '');
+  // Windows paths compare without regard to case; POSIX paths are compared as written.
+  return /^[a-zA-Z]:/.test(trimmed) ? trimmed.replace(/\//g, '\\').toLowerCase() : trimmed;
+};
+
+/** Whether two paths name the same folder, however each tool spelled it. */
+export const isSameFolderPath = (left: string, right: string): boolean =>
+  toComparableFolderPath(left) === toComparableFolderPath(right);
+
 export const filterProjects = (projects: Project[], searchFilter: string): Project[] => {
   const normalizedSearch = searchFilter.trim().toLowerCase();
   if (!normalizedSearch) {

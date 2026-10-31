@@ -1,4 +1,4 @@
-import { Check, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
+import { Check, ChevronLeft, ChevronRight, FolderOpen, Loader2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 import { Button } from '@/shared/ui';
@@ -51,6 +51,11 @@ export default function WizardFooter({
           <>
             <Check className="mr-1 h-4 w-4" />
             {t('projectWizard.buttons.createProject')}
+          </>
+        ) : !isCloneWorkflow ? (
+          <>
+            <FolderOpen className="mr-1 h-4 w-4" />
+            {t('projectWizard.buttons.openFolder', { defaultValue: 'Open folder' })}
           </>
         ) : (
           <>
