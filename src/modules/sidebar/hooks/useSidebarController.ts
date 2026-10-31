@@ -425,8 +425,9 @@ export function useSidebarController({
 
   // `projects` is patched live by `session_upserted`, but the Conversations list
   // is a REST snapshot. Loaded rows take their new activity from `projects`
-  // below; only a session with new activity that is not loaded yet (a new
-  // conversation, or one past the loaded pages) needs the server.
+  // below and move at once. A session with new activity that is not loaded yet
+  // (a new conversation, or one past the loaded pages) needs the server, and so
+  // does a loaded row's last prompt and reply, which only the server reads.
   const latestSessionActivity = useMemo(() => {
     let latest = 0;
     for (const project of projects) {
@@ -487,6 +488,43 @@ export function useSidebarController({
     projects,
     recentConversations,
   ]);
+
+  // One key per set of loaded rows whose live activity is newer than their
+  // snapshot. The key of the last merge is kept, so a server that answers with
+  // the same activity again does not start a request loop. Only Claude rows
+  // count, because the server reads no other provider's transcript.
+  const stalePreviewKey = useMemo(() => {
+    const snapshotActivity = new Map(recentConversations
+      .filter((conversation) => conversation.provider === 'claude')
+      .map((conversation) => [conversation.sessionId, readActivityTime(conversation.lastActivity)]));
+    const stale: string[] = [];
+    for (const project of projects) {
+      for (const session of project.sessions ?? []) {
+        const snapshot = snapshotActivity.get(session.id);
+        const live = readActivityTime(session.lastActivity);
+        if (snapshot !== undefined && live > snapshot) {
+          stale.push(`${session.id}:${live}`);
+        }
+      }
+    }
+    return stale.sort().join('|');
+  }, [projects, recentConversations]);
+  const mergedPreviewKeyRef = useRef('');
+
+  useEffect(() => {
+    if (!isRecentConversationsListShown || !stalePreviewKey || stalePreviewKey === mergedPreviewKeyRef.current) {
+      return undefined;
+    }
+
+    const timer = setTimeout(() => {
+      void mergeLatestRecentConversations().then((merged) => {
+        if (merged) {
+          mergedPreviewKeyRef.current = stalePreviewKey;
+        }
+      });
+    }, RECENT_CONVERSATIONS_ACTIVITY_RELOAD_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [isRecentConversationsListShown, mergeLatestRecentConversations, stalePreviewKey]);
 
   // The Conversations list is fetched when its tab opens, while `projects` is
   // patched the moment a session is renamed or gets a new message. Fold those

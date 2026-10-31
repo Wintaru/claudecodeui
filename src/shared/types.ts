@@ -1694,11 +1694,17 @@ export type ArchivedSessionListItem = {
   isProjectArchived: boolean;
 };
 
-/** The subset of archived-session fields needed to render a recent-conversations row and reopen the session it points at. */
+/**
+ * The subset of archived-session fields needed to render a recent-conversations row and reopen the session it points at,
+ * plus the last prompt and reply, shortened. Both are null when the server does not read the provider's transcript.
+ */
 export type RecentConversationListItem = Pick<
   ArchivedSessionListItem,
   'sessionId' | 'provider' | 'projectId' | 'projectDisplayName' | 'sessionTitle' | 'lastActivity'
->;
+> & {
+  lastPrompt?: string | null;
+  lastReply?: string | null;
+};
 
 /**
  * The rename the sidebar currently has open, if any.

@@ -159,3 +159,17 @@ test('a session needing attention gets the amber dot', () => {
   const rows = container.querySelectorAll('[data-testid="recent-conversation-row"]');
   assert.equal(rows.length, 2);
 });
+
+test('a row shows the last prompt and reply it carries, and nothing for the ones it lacks', () => {
+  const { getAllByTestId } = renderList([
+    conversation('s1', { lastPrompt: 'fix the build', lastReply: 'The build passes.' }),
+    conversation('s2', { lastPrompt: null, lastReply: null }),
+  ], makeActions());
+
+  const prompts = getAllByTestId('recent-conversation-last-prompt');
+  const replies = getAllByTestId('recent-conversation-last-reply');
+  assert.equal(prompts.length, 1);
+  assert.equal(prompts[0].textContent, 'recent.you: fix the build');
+  assert.equal(replies.length, 1);
+  assert.equal(replies[0].textContent, 'The build passes.');
+});

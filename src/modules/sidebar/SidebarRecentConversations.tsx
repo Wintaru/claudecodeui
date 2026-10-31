@@ -155,7 +155,7 @@ export default function SidebarRecentConversations({
                 onClick={handleClick}
                 data-testid="recent-conversation-row"
                 className={cn(
-                  'flex min-w-0 items-center gap-2 rounded-lg px-2 py-2 pr-11 text-left transition-colors',
+                  'flex min-w-0 items-start gap-2 rounded-lg px-2 py-2 pr-11 text-left transition-colors',
                   isSelected
                     ? 'bg-primary/10 text-foreground'
                     : 'text-foreground hover:bg-accent/60',
@@ -172,7 +172,24 @@ export default function SidebarRecentConversations({
                   <span className="block truncate text-[13px] font-normal leading-4">
                     {conversation.sessionTitle}
                   </span>
-                  <span className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[10px] leading-3 text-muted-foreground">
+                  {conversation.lastPrompt && (
+                    <span
+                      data-testid="recent-conversation-last-prompt"
+                      className="mt-1 block truncate text-[11px] leading-4 text-muted-foreground"
+                    >
+                      <span className="font-medium text-foreground/70">{t('recent.you', 'You')}:</span>{' '}
+                      {conversation.lastPrompt}
+                    </span>
+                  )}
+                  {conversation.lastReply && (
+                    <span
+                      data-testid="recent-conversation-last-reply"
+                      className="mt-0.5 line-clamp-3 text-[11px] leading-4 text-muted-foreground"
+                    >
+                      {conversation.lastReply}
+                    </span>
+                  )}
+                  <span className="mt-1 flex min-w-0 items-center gap-1.5 text-[10px] leading-3 text-muted-foreground">
                     <span className="truncate">{conversation.projectDisplayName}</span>
                     {isProcessing ? (
                       <>
