@@ -113,10 +113,14 @@ export async function createProject(
   const persistedProject = dependencies.persistProjectPath(resolvedProjectPath, normalizedCustomName);
 
   if (persistedProject.outcome === 'active_conflict') {
+    // The existing project rides along so "Add folder" can open a chat in it.
     throw new AppError('Project path already exists and is active', {
       code: 'PROJECT_ALREADY_EXISTS',
       statusCode: 409,
-      details: `Project path already exists: ${resolvedProjectPath}`,
+      details: {
+        projectPath: resolvedProjectPath,
+        project: persistedProject.project ? mapProjectRowToApiView(persistedProject.project) : null,
+      },
     });
   }
 
