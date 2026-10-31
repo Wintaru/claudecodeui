@@ -340,6 +340,18 @@ export function normalizeProjectPath(inputPath: string): string {
   return normalized.replace(/[\\/]+$/, '');
 }
 
+/** A resolved path in the form used to compare paths: lowercase on Windows, where paths ignore case. */
+export function comparablePath(value: string): string {
+  const resolved = path.resolve(value);
+  return process.platform === 'win32' ? resolved.toLowerCase() : resolved;
+}
+
+/** Whether `child` is `parent` or inside it. */
+export function isInsideFolder(child: string, parent: string): boolean {
+  const relative = path.relative(comparablePath(parent), comparablePath(child));
+  return relative === '' || (relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative));
+}
+
 /**
  * Validates that a user-supplied workspace path is safe to use.
  *
