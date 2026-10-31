@@ -7,6 +7,7 @@ import { broadcastSessionUpserted, chatRunRegistry } from '@/modules/websocket/i
 import { providerRegistry } from '@/modules/providers/provider.registry.js';
 import { listBusyClaudeCliSessions } from '@/modules/providers/services/claude-cli-liveness.service.js';
 import { sessionHistoryCache } from '@/modules/providers/services/session-history-cache.service.js';
+import { sessionPreviewCache, type SessionPreview } from '@/modules/providers/services/session-preview.service.js';
 import type {
   BackgroundTaskSummary,
   FetchHistoryOptions,
@@ -15,7 +16,7 @@ import type {
   NormalizedMessage,
   WorkflowAgentActivity,
 } from '@/shared/types.js';
-import { AppError, sliceTailPage } from '@/shared/utils.js';
+import { AppError, isClaudeNonTurnMessageRow, sliceTailPage } from '@/shared/utils.js';
 
 /**
  * One session the running-sessions poll reports as busy.
@@ -66,7 +67,7 @@ type ArchivedSessionListItem = {
 type RecentSessionListItem = Pick<
   ArchivedSessionListItem,
   'sessionId' | 'provider' | 'projectId' | 'projectDisplayName' | 'sessionTitle' | 'lastActivity'
->;
+> & SessionPreview;
 
 type RecentSessionsPage = {
   conversations: RecentSessionListItem[];
@@ -136,6 +137,27 @@ function resolveProjectDisplayName(
   }
 
   return path.basename(projectPath) || projectPath;
+}
+
+/**
+ * Normalizes one Claude transcript row for a conversation preview. It skips
+ * what the chat does not show as words: internal rows, subagent rows,
+ * compaction notices, and background-task notifications, which the chat draws
+ * as cards.
+ */
+function normalizeClaudePreviewRow(raw: unknown, sessionId: string): NormalizedMessage[] {
+  if (typeof raw !== 'object' || raw === null) {
+    return [];
+  }
+  const row = raw as Record<string, unknown>;
+  if (isClaudeNonTurnMessageRow(row) || row.isSidechain === true) {
+    return [];
+  }
+  return providerRegistry.resolveProvider('claude').sessions.normalizeMessage(raw, sessionId).filter((message) => (
+    !message.compact
+    && !message.isCompactSummary
+    && !(message.role === 'user' && message.content?.trimStart().startsWith('<task-notification>'))
+  ));
 }
 
 /**
@@ -214,10 +236,10 @@ export const sessionsService = {
   /**
    * Returns the active conversation feed in true global activity order.
    */
-  listRecentSessions(limit: number, offset: number): RecentSessionsPage {
+  async listRecentSessions(limit: number, offset: number): Promise<RecentSessionsPage> {
     const page = sessionsDb.getRecentSessionsPage(limit, offset);
     const projectCache = new Map<string, ReturnType<typeof projectsDb.getProjectPath>>();
-    const conversations = page.sessions.map((session) => {
+    const conversations = await Promise.all(page.sessions.map(async (session) => {
       const projectPath = session.project_path?.trim() ? session.project_path : null;
       let project = null;
 
@@ -228,6 +250,14 @@ export const sessionsService = {
         project = projectCache.get(projectPath) ?? null;
       }
 
+      // Only Claude's normalizer reads persisted transcript rows one at a time;
+      // Codex's expects live events, and Cursor and OpenCode have no JSONL.
+      const preview = await sessionPreviewCache.getPreview({
+        sessionId: session.session_id,
+        transcriptPath: session.provider === 'claude' ? session.jsonl_path : null,
+        normalize: (raw) => normalizeClaudePreviewRow(raw, session.session_id),
+      });
+
       return {
         sessionId: session.session_id,
         provider: session.provider as LLMProvider,
@@ -235,8 +265,9 @@ export const sessionsService = {
         projectDisplayName: resolveProjectDisplayName(projectPath, project?.custom_project_name),
         sessionTitle: session.custom_name?.trim() || session.session_id,
         lastActivity: session.updated_at ?? session.created_at ?? null,
+        ...preview,
       };
-    });
+    }));
 
     return {
       conversations,
