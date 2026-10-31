@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 
 import { afterEach, beforeEach, test, vi } from 'vitest';
 
-import { cloneWorkspaceWithProgress } from '@/modules/project-creation-wizard/utils/workspaceApi';
+import { cloneWorkspaceWithProgress, openFolderRequest } from '@/modules/project-creation-wizard/utils/workspaceApi';
 
 /**
  * A stand-in for the browser's EventSource: records the URL it was opened
@@ -121,4 +121,43 @@ test('cloneWorkspaceWithProgress rejects with the server error and never opens a
     { message: 'Invalid githubUrl' },
   );
   assert.equal(FakeEventSource.opened.length, 0);
+});
+
+test('openFolderRequest returns the added project', async () => {
+  respondToStart(200, {
+    success: true,
+    project: { projectId: 'p1', fullPath: 'c:\\workspaces\\new', displayName: 'new', path: 'c:\\workspaces\\new' },
+  });
+
+  const opened = await openFolderRequest({ path: 'C:\\workspaces\\new' });
+
+  assert.equal(opened.kind, 'added');
+  assert.equal(opened.kind === 'added' ? opened.project?.projectId : null, 'p1');
+});
+
+test('openFolderRequest treats a folder that already is a project as opened, not as an error', async () => {
+  const existing = { projectId: 'p-ocu', fullPath: 'c:\\workspaces\\Ocuvera', displayName: 'Ocuvera' };
+  respondToStart(409, {
+    success: false,
+    error: {
+      code: 'PROJECT_ALREADY_EXISTS',
+      message: 'Project path already exists and is active',
+      details: { projectPath: 'c:\\workspaces\\Ocuvera', project: existing },
+    },
+  });
+
+  const opened = await openFolderRequest({ path: 'C:\\workspaces\\Ocuvera' });
+
+  assert.deepEqual(opened, { kind: 'alreadyAdded', path: 'C:\\workspaces\\Ocuvera', project: existing });
+});
+
+test('openFolderRequest rejects any other failure with the server message', async () => {
+  respondToStart(400, {
+    success: false,
+    error: { code: 'INVALID_PROJECT_PATH', message: 'Invalid project path', details: 'Workspace path must be within the allowed workspace root' },
+  });
+
+  await assert.rejects(openFolderRequest({ path: 'D:\\elsewhere' }), {
+    message: 'Workspace path must be within the allowed workspace root',
+  });
 });

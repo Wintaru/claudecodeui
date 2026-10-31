@@ -141,6 +141,61 @@ export const sortProjects = (
   return byName;
 };
 
+// Looser than the server's `normalizeProjectPath`, which lower-cases only the
+// drive letter: a path typed by the user or read from a `.git` file can differ
+// in folder-name case, and Windows treats those as the same folder.
+const toComparableFolderPath = (folderPath: string): string => {
+  const trimmed = folderPath.trim().replace(/[\\/]+$/, '');
+  // Windows paths compare without regard to case; POSIX paths are compared as written.
+  return /^[a-zA-Z]:/.test(trimmed) ? trimmed.replace(/\//g, '\\').toLowerCase() : trimmed;
+};
+
+/** Whether two paths name the same folder, however each tool spelled it. */
+export const isSameFolderPath = (left: string, right: string): boolean =>
+  toComparableFolderPath(left) === toComparableFolderPath(right);
+
+/** One row of the project list: a project, or a worktree drawn under its repo. */
+export type ProjectListRow = {
+  project: Project;
+  /** The repo row this worktree sits under; null for a top-level row. */
+  parentProjectId: string | null;
+  /** Worktrees listed under this row; 0 for a worktree row. */
+  worktreeCount: number;
+};
+
+/**
+ * Puts each worktree directly under its main checkout, keeping the order the
+ * list already has. A worktree whose repo is not in the list stays where it is,
+ * and so does a starred one, which keeps its place in the starred group.
+ */
+export const nestWorktreeProjects = (projects: Project[]): ProjectListRow[] => {
+  const worktreesByParentId = new Map<string, Project[]>();
+  const nestedIds = new Set<string>();
+  for (const project of projects) {
+    const mainPath = project.worktreeOf;
+    if (!mainPath || project.isStarred) {
+      continue;
+    }
+    const parent = projects.find((candidate) => (
+      candidate.projectId !== project.projectId && isSameFolderPath(candidate.fullPath, mainPath)
+    ));
+    if (parent) {
+      worktreesByParentId.set(parent.projectId, [...(worktreesByParentId.get(parent.projectId) ?? []), project]);
+      nestedIds.add(project.projectId);
+    }
+  }
+
+  return projects
+    .filter((project) => !nestedIds.has(project.projectId))
+    .flatMap((project) => {
+      const worktrees = worktreesByParentId.get(project.projectId) ?? [];
+      return [
+        { project, parentProjectId: null, worktreeCount: worktrees.length },
+        ...worktrees.map((worktree) => ({ project: worktree, parentProjectId: project.projectId, worktreeCount: 0 })),
+      ];
+    });
+};
+
 export const filterProjects = (projects: Project[], searchFilter: string): Project[] => {
   const normalizedSearch = searchFilter.trim().toLowerCase();
   if (!normalizedSearch) {

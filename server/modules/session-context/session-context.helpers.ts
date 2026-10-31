@@ -21,18 +21,6 @@ export const NOTE_FOLDERS = {
   walkthroughs: 'walkthroughs',
 } as const;
 
-/** A resolved path in the form used to compare paths: lowercase on Windows, where paths ignore case. */
-export function comparablePath(value: string): string {
-  const resolved = path.resolve(value);
-  return process.platform === 'win32' ? resolved.toLowerCase() : resolved;
-}
-
-/** Whether `child` is `parent` or inside it. */
-export function isInsideFolder(child: string, parent: string): boolean {
-  const relative = path.relative(comparablePath(parent), comparablePath(child));
-  return relative === '' || (relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative));
-}
-
 /** Fenced blocks whose content is a picture, not something to paste into a shell or form. */
 const NON_COPYABLE_LANGUAGES = new Set(['mermaid']);
 

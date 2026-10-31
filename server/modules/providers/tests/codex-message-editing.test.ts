@@ -10,6 +10,7 @@ import { closeConnection, initializeDatabase, sessionsDb } from '@/modules/datab
 import { codexAppServer } from '@/modules/providers/list/codex/codex-app-server.client.js';
 import { CodexSessionSynchronizer } from '@/modules/providers/list/codex/codex-session-synchronizer.provider.js';
 import { CodexSessionsProvider } from '@/modules/providers/list/codex/codex-sessions.provider.js';
+import { normalizeProjectPath } from '@/shared/utils.js';
 
 /**
  * Codex rows carry no id of their own, so an edit addresses the enclosing
@@ -220,7 +221,7 @@ test('rewinding a Codex session moves it onto the branch and retires the old thr
       codexAppServer.forkThread = realForkThread;
     }
 
-    assert.deepEqual(forkCalls, [{ threadId: 'thread-1', lastTurnId: 'turn-b', cwd: workspacePath }]);
+    assert.deepEqual(forkCalls, [{ threadId: 'thread-1', lastTurnId: 'turn-b', cwd: normalizeProjectPath(workspacePath) }]);
 
     const session = sessionsDb.getSessionById(sessionId);
     assert.equal(session?.provider_session_id, 'thread-2');

@@ -11,7 +11,9 @@ import type {
 } from '@/shared/types.js';
 import {
   AppError,
+  comparablePath,
   FORBIDDEN_WORKSPACE_PATHS,
+  isInsideFolder,
   normalizeProjectPath,
   resolvePathUnderRoots,
 } from '@/shared/utils.js';
@@ -97,9 +99,9 @@ function resolvePathInsideProject(projectRoot: string, targetPath: string): stri
   const resolvedPath = path.isAbsolute(targetPath)
     ? path.resolve(targetPath)
     : path.resolve(projectRoot, targetPath);
-  const normalizedProjectRoot = path.resolve(projectRoot) + path.sep;
 
-  if (!resolvedPath.startsWith(normalizedProjectRoot)) {
+  // The root itself is not a target: every caller writes, renames or deletes below it.
+  if (!isInsideFolder(resolvedPath, projectRoot) || comparablePath(resolvedPath) === comparablePath(projectRoot)) {
     throw createFileTreeError('Path must be under project root', 403, 'PATH_OUTSIDE_PROJECT');
   }
 
@@ -419,7 +421,7 @@ export function createFileTreeService(dependencies: FileTreeServiceDependencies)
         // The configured workspace root remains the comparison fallback.
       }
 
-      const suggestions = resolvedPath === resolvedWorkspaceRoot
+      const suggestions = comparablePath(resolvedPath) === comparablePath(resolvedWorkspaceRoot)
         ? [
             ...directories.filter((directory) => COMMON_WORKSPACE_DIRECTORY_NAMES.includes(directory.name)),
             ...directories.filter((directory) => !COMMON_WORKSPACE_DIRECTORY_NAMES.includes(directory.name)),

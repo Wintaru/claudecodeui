@@ -24,7 +24,7 @@ const previousUserProfile = process.env.USERPROFILE;
 process.env.HOME = fixtureHome;
 process.env.USERPROFILE = fixtureHome;
 
-const { resolvePathUnderRoots, resolveReadOnlyRootPath, validateWorkspacePath } = await import('@/shared/utils.js');
+const { normalizeProjectPath, resolvePathUnderRoots, resolveReadOnlyRootPath, validateWorkspacePath } = await import('@/shared/utils.js');
 
 after(async () => {
   if (previousHome === undefined) {
@@ -127,7 +127,7 @@ test('a root that does not exist does not stop later roots from matching', async
     assert.equal(await resolvePathUnderRoots(temporaryDirectory, [missingRoot]), null);
     assert.equal(
       await resolvePathUnderRoots(temporaryDirectory, [missingRoot, os.tmpdir()]),
-      await realpath(temporaryDirectory),
+      normalizeProjectPath(await realpath(temporaryDirectory)),
     );
   } finally {
     await rm(temporaryDirectory, { recursive: true, force: true });

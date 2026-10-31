@@ -140,7 +140,7 @@
     }
   },
   "projectWizard": {
-    "title": "Create New Project",
+    "title": "Add Folder",
     "steps": {
       "type": "Type",
       "configure": "Configure",
@@ -163,7 +163,7 @@
       "existingPlaceholder": "/path/to/existing/workspace",
       "newPlaceholder": "/path/to/new/workspace",
       "existingHelp": "Full path to your existing workspace directory",
-      "newHelp": "Full path to your workspace directory",
+      "newHelp": "Full path to the folder. A new chat opens in it. A folder that does not exist yet is created.",
       "githubUrl": "GitHub URL (Optional)",
       "githubPlaceholder": "https://github.com/username/repository",
       "githubHelp": "Optional: provide a GitHub URL to clone a repository",
@@ -203,6 +203,7 @@
       "back": "Back",
       "next": "Next",
       "createProject": "Create Project",
+      "openFolder": "Open folder",
       "creating": "Creating...",
       "cloning": "Cloning..."
     },

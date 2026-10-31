@@ -4,7 +4,7 @@ import path from 'path';
 import express from 'express';
 
 import type { ProviderRunFunction } from '@/shared/types.js';
-import { AppError, getGitErrorDetails } from '@/shared/utils.js';
+import { AppError, getGitErrorDetails, isInsideFolder } from '@/shared/utils.js';
 
 // cross-spawn: drop-in spawn with Windows .cmd/PATHEXT resolution.
 import { parseGitLogWithStats, parseGitStatusOutput } from './git-parsing.service.js';
@@ -89,9 +89,7 @@ function validateFilePath(file, projectPath) {
   // Prevent path traversal: resolve the file relative to the project root
   // and ensure the result stays within the project directory
   if (projectPath) {
-    const resolved = path.resolve(projectPath, file);
-    const normalizedRoot = path.resolve(projectPath) + path.sep;
-    if (!resolved.startsWith(normalizedRoot) && resolved !== path.resolve(projectPath)) {
+    if (!isInsideFolder(path.resolve(projectPath, file), projectPath)) {
       throw new Error('Invalid file path: path traversal detected');
     }
   }

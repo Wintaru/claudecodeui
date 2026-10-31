@@ -5,7 +5,7 @@ import type { TFunction } from 'i18next';
 
 import { Button } from '@/shared/ui';
 import { Settings } from '@/modules/settings';
-import type { PendingSidebarDeletion, Project, SettingsProject } from '@/shared/types';
+import type { OpenedFolder, PendingSidebarDeletion, Project, SettingsProject } from '@/shared/types';
 import { normalizeProjectForSettings } from '@/modules/sidebar/utils/sidebarProjectFormatting';
 import { ProjectCreationWizard } from '@/modules/project-creation-wizard';
 
@@ -16,7 +16,7 @@ type SidebarModalsProps = {
   onCloseSettings: () => void;
   showNewProject: boolean;
   onCloseNewProject: () => void;
-  onProjectCreated: () => void;
+  onFolderOpened: (opened: OpenedFolder) => void;
   pendingDeletion: PendingSidebarDeletion | null;
   onCancelDeletion: () => void;
   onConfirmDeleteProject: (deleteData?: boolean) => void;
@@ -47,7 +47,7 @@ export default function SidebarModals({
   onCloseSettings,
   showNewProject,
   onCloseNewProject,
-  onProjectCreated,
+  onFolderOpened,
   pendingDeletion,
   onCancelDeletion,
   onConfirmDeleteProject,
@@ -67,7 +67,7 @@ export default function SidebarModals({
         ReactDOM.createPortal(
           <ProjectCreationWizard
             onClose={onCloseNewProject}
-            onProjectCreated={onProjectCreated}
+            onFolderOpened={onFolderOpened}
           />,
           document.body,
         )}

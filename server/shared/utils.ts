@@ -309,6 +309,7 @@ function shouldUseWindowsPathNormalization(inputPath: string): boolean {
  * - trim whitespace
  * - strip Windows long-path prefixes (`\\?\` and `\\?\UNC\`)
  * - normalize path separators and dot segments
+ * - lower-case a Windows drive letter, which tools spell either way
  * - trim trailing separators except for filesystem roots
  */
 export function normalizeProjectPath(inputPath: string): string {
@@ -324,7 +325,7 @@ export function normalizeProjectPath(inputPath: string): string {
   const withoutLongPrefix = stripWindowsLongPathPrefix(trimmed);
   const useWindowsPathRules = shouldUseWindowsPathNormalization(withoutLongPrefix);
   const normalized = useWindowsPathRules
-    ? path.win32.normalize(withoutLongPrefix)
+    ? path.win32.normalize(withoutLongPrefix).replace(/^[A-Z](?=:)/, (driveLetter) => driveLetter.toLowerCase())
     : path.posix.normalize(withoutLongPrefix);
 
   if (!normalized) {
@@ -338,6 +339,18 @@ export function normalizeProjectPath(inputPath: string): string {
   }
 
   return normalized.replace(/[\\/]+$/, '');
+}
+
+/** A resolved path in the form used to compare paths: lowercase on Windows, where paths ignore case. */
+export function comparablePath(value: string): string {
+  const resolved = path.resolve(value);
+  return process.platform === 'win32' ? resolved.toLowerCase() : resolved;
+}
+
+/** Whether `child` is `parent` or inside it. */
+export function isInsideFolder(child: string, parent: string): boolean {
+  const relative = path.relative(comparablePath(parent), comparablePath(child));
+  return relative === '' || (relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative));
 }
 
 /**
@@ -428,10 +441,7 @@ export async function validateWorkspacePath(requestedPath: string): Promise<Work
         const symlinkTarget = await readlink(absolutePath);
         const resolvedSymlinkPath = path.resolve(path.dirname(absolutePath), symlinkTarget);
         const realSymlinkPath = await realpath(resolvedSymlinkPath);
-        if (
-          !realSymlinkPath.startsWith(`${resolvedWorkspaceRoot}${path.sep}`)
-          && realSymlinkPath !== resolvedWorkspaceRoot
-        ) {
+        if (!isInsideFolder(realSymlinkPath, resolvedWorkspaceRoot)) {
           return {
             valid: false,
             error: 'Symlink target is outside the allowed workspace root',

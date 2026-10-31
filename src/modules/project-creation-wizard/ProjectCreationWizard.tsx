@@ -8,13 +8,13 @@ import StepReview from '@/modules/project-creation-wizard/StepReview';
 import WizardFooter from '@/modules/project-creation-wizard/WizardFooter';
 import WizardProgress from '@/modules/project-creation-wizard/WizardProgress';
 import { useGithubTokens } from '@/modules/project-creation-wizard/hooks/useGithubTokens';
-import { cloneWorkspaceWithProgress, createProjectRequest } from '@/modules/project-creation-wizard/utils/workspaceApi';
+import { cloneWorkspaceWithProgress, openFolderRequest, toCreatedProject } from '@/modules/project-creation-wizard/utils/workspaceApi';
 import { isCloneWorkflow, shouldShowGithubAuthentication } from '@/modules/project-creation-wizard/utils/pathUtils';
-import type { TokenMode, WizardFormState, WizardStep } from '@/shared/types';
+import type { OpenedFolder, TokenMode, WizardFormState, WizardStep } from '@/shared/types';
 
 type ProjectCreationWizardProps = {
   onClose: () => void;
-  onProjectCreated?: (project?: Record<string, unknown>) => void;
+  onFolderOpened?: (opened: OpenedFolder) => void;
 };
 
 const initialFormState: WizardFormState = {
@@ -28,7 +28,7 @@ const initialFormState: WizardFormState = {
 /** Rendered by the sidebar module's modal layer to create a new project or clone one from GitHub. */
 export default function ProjectCreationWizard({
   onClose,
-  onProjectCreated,
+  onFolderOpened,
 }: ProjectCreationWizardProps) {
   const { t } = useTranslation();
   const [step, setStep] = useState<WizardStep>(1);
@@ -65,24 +65,12 @@ export default function ProjectCreationWizard({
     [updateField],
   );
 
-  const handleNext = useCallback(() => {
-    setError(null);
-
-    if (step === 1) {
-      if (!formState.workspacePath.trim()) {
-        setError(t('projectWizard.errors.providePath'));
-        return;
-      }
-      setStep(2);
-    }
-  }, [formState.workspacePath, step, t]);
-
   const handleBack = useCallback(() => {
     setError(null);
     setStep((previousStep) => (previousStep > 1 ? ((previousStep - 1) as WizardStep) : previousStep));
   }, []);
 
-  const handleCreate = useCallback(async () => {
+  const createAt = useCallback(async (workspacePath: string) => {
     setIsCreating(true);
     setError(null);
     setCloneProgress('');
@@ -93,7 +81,7 @@ export default function ProjectCreationWizard({
       if (shouldCloneRepository) {
         const project = await cloneWorkspaceWithProgress(
           {
-            workspacePath: formState.workspacePath,
+            workspacePath,
             githubUrl: formState.githubUrl,
             tokenMode: formState.tokenMode,
             selectedGithubToken: formState.selectedGithubToken,
@@ -104,16 +92,12 @@ export default function ProjectCreationWizard({
           },
         );
 
-        onProjectCreated?.(project);
+        onFolderOpened?.({ kind: 'added', project: toCreatedProject(project) });
         onClose();
         return;
       }
 
-      const project = await createProjectRequest({
-        path: formState.workspacePath.trim(),
-      });
-
-      onProjectCreated?.(project);
+      onFolderOpened?.(await openFolderRequest({ path: workspacePath.trim() }));
       onClose();
     } catch (createError) {
       const errorMessage =
@@ -124,7 +108,32 @@ export default function ProjectCreationWizard({
     } finally {
       setIsCreating(false);
     }
-  }, [formState, onClose, onProjectCreated, t]);
+  }, [formState, onClose, onFolderOpened, t]);
+
+  const handleCreate = useCallback(() => {
+    void createAt(formState.workspacePath);
+  }, [createAt, formState.workspacePath]);
+
+  // An existing folder needs no review: step 1 opens it. A clone keeps the
+  // review step, which shows the URL and the token it will use. The path is
+  // passed in because a folder picked in the browser is not in state yet.
+  const continueWithPath = useCallback((workspacePath: string) => {
+    setError(null);
+
+    if (!workspacePath.trim()) {
+      setError(t('projectWizard.errors.providePath'));
+      return;
+    }
+    if (isCloneWorkflow(formState.githubUrl)) {
+      setStep(2);
+      return;
+    }
+    void createAt(workspacePath);
+  }, [createAt, formState.githubUrl, t]);
+
+  const handleNext = useCallback(() => {
+    continueWithPath(formState.workspacePath);
+  }, [continueWithPath, formState.workspacePath]);
 
   const shouldCloneRepository = useMemo(
     () => isCloneWorkflow(formState.githubUrl),
@@ -177,7 +186,7 @@ export default function ProjectCreationWizard({
               onNewGithubTokenChange={(newGithubToken) =>
                 updateField('newGithubToken', newGithubToken)
               }
-              onAdvanceToConfirm={() => setStep(2)}
+              onAdvanceToConfirm={continueWithPath}
             />
           )}
 

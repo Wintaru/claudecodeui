@@ -1,8 +1,8 @@
 import path from 'node:path';
 
 import type { GitCommandRunner } from '@/shared/types.js';
-import { AppError } from '@/shared/utils.js';
-import { comparablePath, isInsideFolder, NOTE_FOLDERS } from '@/modules/session-context/session-context.helpers.js';
+import { AppError, comparablePath, isInsideFolder } from '@/shared/utils.js';
+import { NOTE_FOLDERS } from '@/modules/session-context/session-context.helpers.js';
 
 export type OpenInEditorDependencies = {
   runGit: GitCommandRunner;

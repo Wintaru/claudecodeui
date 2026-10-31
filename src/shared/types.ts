@@ -130,6 +130,8 @@ export type Project = {
   fullPath: string;
   path?: string;
   isStarred?: boolean;
+  /** For a git worktree, the path of its main checkout; the sidebar nests it there. */
+  worktreeOf?: string | null;
   sessions?: ProjectSession[];
   sessionMeta?: ProjectSessionMeta;
   taskmaster?: ProjectTaskmasterInfo;
@@ -1290,6 +1292,15 @@ export type WizardFormState = {
   selectedGithubToken: string;
   newGithubToken: string;
 };
+
+/**
+ * The folder the wizard added or cloned, handed to the sidebar so it can open
+ * a new chat there. `alreadyAdded` also carries the path the user picked, for
+ * a server that answers a duplicate without the existing project.
+ */
+export type OpenedFolder =
+  | { kind: 'added'; project: Project | null }
+  | { kind: 'alreadyAdded'; path: string; project: Project | null };
 
 // ---------------------------
 

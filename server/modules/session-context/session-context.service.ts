@@ -1,9 +1,9 @@
 import path from 'node:path';
 
 import type { GitCommandRunner } from '@/shared/types.js';
+import { comparablePath } from '@/shared/utils.js';
 import {
   buildPushCommand,
-  comparablePath,
   extractCodeBlocks,
   isCheckoutNoteFile,
   matchesCheckoutDoc,

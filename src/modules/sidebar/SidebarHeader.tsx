@@ -1,4 +1,4 @@
-import { FolderPlus, Plus, RefreshCw, Search, X, PanelLeftClose } from 'lucide-react';
+import { FolderPlus, RefreshCw, Search, X, PanelLeftClose } from 'lucide-react';
 import type { TFunction } from 'i18next';
 
 import { Button, Input } from '@/shared/ui';
@@ -117,11 +117,12 @@ export default function SidebarHeader({
             <Button
               variant="ghost"
               size="sm"
-              className="h-7 w-7 rounded-lg p-0 text-muted-foreground hover:bg-accent/80 hover:text-foreground"
+              className="h-7 gap-1 rounded-lg px-2 text-xs text-muted-foreground hover:bg-accent/80 hover:text-foreground"
               onClick={onCreateProject}
               title={t('tooltips.createProject')}
             >
-              <Plus className="h-3.5 w-3.5" />
+              <FolderPlus className="h-3.5 w-3.5" />
+              {t('actions.addFolder', { defaultValue: 'Add folder' })}
             </Button>
             <Button
               variant="ghost"

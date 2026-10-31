@@ -21,7 +21,7 @@ type StepConfigurationProps = {
   onTokenModeChange: (tokenMode: TokenMode) => void;
   onSelectedGithubTokenChange: (tokenId: string) => void;
   onNewGithubTokenChange: (tokenValue: string) => void;
-  onAdvanceToConfirm: () => void;
+  onAdvanceToConfirm: (selectedPath: string) => void;
 };
 
 /** Rendered by ProjectCreationWizard as step 1, collecting the workspace path, clone URL and GitHub authentication. */
