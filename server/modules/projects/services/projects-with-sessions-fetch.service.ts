@@ -2,6 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 
 import { projectsDb, sessionsDb } from '@/modules/database/index.js';
+import { readWorktreeMainPath } from '@/modules/projects/services/project-worktree-parent.service.js';
 import { sessionSynchronizerService } from '@/modules/providers/index.js';
 import { WS_OPEN_STATE, connectedClients } from '@/modules/websocket/index.js';
 import type { RealtimeClientConnection } from '@/shared/types.js';
@@ -29,6 +30,8 @@ export type ProjectListItem = {
   displayName: string;
   fullPath: string;
   isStarred: boolean;
+  /** For a git worktree, the path of its main checkout; the sidebar nests it there. */
+  worktreeOf?: string | null;
   sessions: SessionSummary[];
   sessionMeta: {
     hasMore: boolean;
@@ -223,6 +226,7 @@ export async function getProjectsWithSessions(
       displayName,
       fullPath: projectPath,
       isStarred: Boolean(row.isStarred),
+      worktreeOf: await readWorktreeMainPath(projectPath),
       sessions: sessionsPage.sessions,
       sessionMeta: {
         hasMore: sessionsPage.hasMore,
