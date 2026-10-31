@@ -9,8 +9,9 @@ import type { Project, RecentConversationListItem } from '@/shared/types';
 /**
  * The Conversations list is a REST snapshot, while `projects` is patched live
  * when a session gets a new message. Loaded rows take the new activity from
- * `projects` and move without a request; a conversation that is not loaded
- * yet is merged in from the server without dropping the pages already loaded.
+ * `projects` and move at once, then one quiet merge brings their new last
+ * prompt and reply; a conversation that is not loaded yet is merged in from
+ * the server without dropping the pages already loaded.
  */
 
 const recentConversationsResponse = vi.fn();
@@ -103,15 +104,36 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-test('a new message in a loaded conversation moves it to the top without a request', async () => {
+test('a new message in a loaded conversation moves it to the top at once, then refreshes its preview quietly', async () => {
   respondWith([conversation('session-1', EARLIER), conversation('session-2', EARLIER)]);
   const { result, rerender } = await openConversationsTab([buildProject({ 'session-1': EARLIER, 'session-2': EARLIER })]);
 
+  respondWith([{ ...conversation('session-2', LATER), lastReply: 'new reply' }, conversation('session-1', EARLIER)]);
   rerender({ projects: [buildProject({ 'session-1': EARLIER, 'session-2': LATER })] });
 
   assert.deepEqual(rowIds(result.current.recentConversations), ['session-2', 'session-1']);
-  await waitPastReloadDelay();
   assert.equal(recentConversationsResponse.mock.calls.length, 1);
+  await waitPastReloadDelay();
+  await waitFor(() => {
+    assert.equal(result.current.recentConversations[0].lastReply, 'new reply');
+  });
+  assert.equal(recentConversationsResponse.mock.calls.length, 2);
+  assert.equal(result.current.isRecentConversationsLoading, false);
+
+  await waitPastReloadDelay();
+  assert.equal(recentConversationsResponse.mock.calls.length, 2);
+});
+
+test('a server that still reports the older activity is not asked again', async () => {
+  respondWith([conversation('session-1', EARLIER)]);
+  const { rerender } = await openConversationsTab([buildProject({ 'session-1': EARLIER })]);
+
+  respondWith([conversation('session-1', EARLIER)]);
+  rerender({ projects: [buildProject({ 'session-1': LATER })] });
+  await waitPastReloadDelay();
+  await waitPastReloadDelay();
+
+  assert.equal(recentConversationsResponse.mock.calls.length, 2);
 });
 
 test('a conversation that is not loaded is merged in quietly, keeping the loaded pages', async () => {
@@ -152,16 +174,18 @@ test('opening the tab loads once, even when sessions already carry activity', as
   assert.equal(recentConversationsResponse.mock.calls.length, 1);
 });
 
-test('newer activity below the current newest keeps the order and sends no request', async () => {
+test('newer activity below the current newest keeps the order and refreshes the preview', async () => {
   respondWith([conversation('session-1', LATER), conversation('session-2', EARLIER)]);
   const { result, rerender } = await openConversationsTab([buildProject({ 'session-1': LATER, 'session-2': EARLIER })]);
 
+  respondWith([conversation('session-1', LATER), conversation('session-2', MIDDLE)]);
   rerender({ projects: [buildProject({ 'session-1': LATER, 'session-2': MIDDLE })] });
 
   assert.deepEqual(rowIds(result.current.recentConversations), ['session-1', 'session-2']);
   assert.equal(result.current.recentConversations[1].lastActivity, MIDDLE);
   await waitPastReloadDelay();
-  assert.equal(recentConversationsResponse.mock.calls.length, 1);
+  assert.equal(recentConversationsResponse.mock.calls.length, 2);
+  assert.deepEqual(rowIds(result.current.recentConversations), ['session-1', 'session-2']);
 });
 
 test('a failed merge is tried again on the next activity change', async () => {

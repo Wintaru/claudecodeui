@@ -93,7 +93,7 @@ test('provider session id reports a missing app session', { concurrency: false }
 });
 
 test('recent sessions map project metadata and preserve database pagination', { concurrency: false }, async () => {
-  await withIsolatedDatabase(() => {
+  await withIsolatedDatabase(async () => {
     sessionsDb.createSession(
       'older-session',
       'claude',
@@ -113,7 +113,7 @@ test('recent sessions map project metadata and preserve database pagination', { 
     projectsDb.updateCustomProjectName('/tmp/recent-project', 'Recent Project');
 
     const project = projectsDb.getProjectPath('/tmp/recent-project');
-    const page = sessionsService.listRecentSessions(1, 0);
+    const page = await sessionsService.listRecentSessions(1, 0);
 
     assert.deepEqual(page, {
       conversations: [{
@@ -123,11 +123,76 @@ test('recent sessions map project metadata and preserve database pagination', { 
         projectDisplayName: 'Recent Project',
         sessionTitle: 'Newer conversation',
         lastActivity: '2026-08-01T11:00:00.000Z',
+        lastPrompt: null,
+        lastReply: null,
       }],
       total: 2,
       hasMore: true,
     });
   });
+});
+
+test('recent Claude sessions carry the last prompt and reply from the transcript', { concurrency: false }, async () => {
+  const transcriptDirectory = await mkdtemp(path.join(os.tmpdir(), 'sessions-service-preview-'));
+  const sessionId = 'claude-preview-session';
+  const transcriptPath = path.join(transcriptDirectory, `${sessionId}.jsonl`);
+
+  try {
+    await withIsolatedDatabase(async () => {
+      const toolResultRow = {
+        type: 'user',
+        uuid: 'row-4',
+        parentUuid: 'row-3',
+        timestamp: '2026-01-01T00:00:04.000Z',
+        sessionId,
+        message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'tool-1', content: 'ok' }] },
+      };
+      // None of these is said by the user or Claude, so none may become the preview.
+      const internalRow = {
+        type: 'api-request-blob',
+        sessionId,
+        message: { role: 'user', content: [{ type: 'text', text: 'Tool loaded.' }] },
+      };
+      const sidechainRow = { ...claudeTextRow(sessionId, 'assistant', 'subagent words', 5), isSidechain: true };
+      const notificationRow = claudeTextRow(sessionId, 'user', '<task-notification>\n<task-id>a1</task-id>\n</task-notification>', 6);
+      const rows = [
+        claudeTextRow(sessionId, 'user', 'first question', 0),
+        claudeTextRow(sessionId, 'assistant', 'first answer', 1),
+        claudeTextRow(sessionId, 'user', 'Fix the   **build**\nplease', 2),
+        claudeTextRow(sessionId, 'assistant', '## Done\nThe `build` passes, see [the log](C:/logs/build.md).', 3),
+        toolResultRow,
+        internalRow,
+        sidechainRow,
+        notificationRow,
+      ];
+      // The last row is half-written, as it is while the CLI streams.
+      await writeFile(transcriptPath, `${rows.map((row) => JSON.stringify(row)).join('\n')}\n{"type":"assi`, 'utf8');
+      sessionsDb.createSession(
+        sessionId,
+        'claude',
+        '/tmp/preview-project',
+        'Preview conversation',
+        '2026-01-01T00:00:00.000Z',
+        '2026-01-01T00:00:10.000Z',
+        transcriptPath,
+      );
+
+      const page = await sessionsService.listRecentSessions(1, 0);
+      assert.equal(page.conversations[0].lastPrompt, 'Fix the build please');
+      assert.equal(page.conversations[0].lastReply, 'Done The build passes, see the log.');
+
+      await appendFile(
+        transcriptPath,
+        `\n${JSON.stringify(claudeTextRow(sessionId, 'user', 'one more thing', 7))}\n`,
+        'utf8',
+      );
+      const refreshed = await sessionsService.listRecentSessions(1, 0);
+      assert.equal(refreshed.conversations[0].lastPrompt, 'one more thing');
+      assert.equal(refreshed.conversations[0].lastReply, 'Done The build passes, see the log.');
+    });
+  } finally {
+    await rm(transcriptDirectory, { recursive: true, force: true });
+  }
 });
 
 /** One Claude transcript row of user or assistant text, linked by uuid chain. */
