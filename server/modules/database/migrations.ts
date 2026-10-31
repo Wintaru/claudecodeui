@@ -1,3 +1,5 @@
+import path from 'node:path';
+
 import { Database } from 'better-sqlite3';
 
 import {
@@ -15,6 +17,7 @@ import {
   USER_NOTIFICATION_PREFERENCES_TABLE_SCHEMA_SQL,
   VAPID_KEYS_TABLE_SCHEMA_SQL,
 } from '@/modules/database/schema.js';
+import { normalizeProjectPath } from '@/shared/utils.js';
 
 const SQLITE_UUID_SQL = `
 lower(hex(randomblob(4))) || '-' ||
@@ -489,6 +492,105 @@ const ensureProjectsForSessionPaths = (db: Database): void => {
   `);
 };
 
+type ProjectMergeRow = {
+  project_id: string;
+  project_path: string;
+  custom_project_name: string | null;
+  isStarred: number;
+  isArchived: number;
+};
+
+/**
+ * One folder can reach the table under two keys when tools spell its path
+ * differently (Windows drive letters arrive as `c:` and `C:`). Rewrites every
+ * stored path to its normalized form and merges projects that then share one,
+ * moving their sessions and unsent drafts to the row that is kept.
+ */
+export const mergeProjectsWithSameNormalizedPath = (db: Database): void => {
+  if (!tableExists(db, 'projects') || !tableExists(db, 'sessions')) {
+    return;
+  }
+
+  const sessionPaths = db.prepare(
+    'SELECT DISTINCT project_path FROM sessions WHERE project_path IS NOT NULL',
+  ).all() as Array<{ project_path: string }>;
+  const projects = db.prepare(
+    'SELECT project_id, project_path, custom_project_name, isStarred, isArchived FROM projects',
+  ).all() as ProjectMergeRow[];
+
+  const groups = new Map<string, ProjectMergeRow[]>();
+  for (const project of projects) {
+    const key = normalizeProjectPath(project.project_path);
+    groups.set(key, [...(groups.get(key) ?? []), project]);
+  }
+  const needsWork = sessionPaths.some(({ project_path }) => {
+    const key = normalizeProjectPath(project_path);
+    return key !== '' && key !== project_path;
+  }) || [...groups].some(([key, rows]) => key !== '' && (rows.length > 1 || rows[0].project_path !== key));
+  if (!needsWork) {
+    return;
+  }
+
+  const moveSessions = db.prepare('UPDATE sessions SET project_path = ? WHERE project_path = ?');
+  const moveDraft = db.prepare(`
+    UPDATE session_drafts SET draft_scope = ?
+    WHERE draft_scope = ?
+      AND NOT EXISTS (
+        SELECT 1 FROM session_drafts kept
+        WHERE kept.user_id = session_drafts.user_id AND kept.draft_scope = ?
+      )
+  `);
+  const deleteDrafts = db.prepare('DELETE FROM session_drafts WHERE draft_scope = ?');
+  const deleteProject = db.prepare('DELETE FROM projects WHERE project_id = ?');
+  const updateKept = db.prepare(`
+    UPDATE projects
+    SET project_path = ?, custom_project_name = ?, isStarred = ?, isArchived = ?
+    WHERE project_id = ?
+  `);
+  const hasDrafts = tableExists(db, 'session_drafts');
+
+  db.transaction(() => {
+    for (const [key, rows] of groups) {
+      if (!key) {
+        continue;
+      }
+      const kept = rows.find((row) => row.project_path === key) ?? rows[0];
+      const lost = rows.filter((row) => row !== kept);
+      // The kept row takes the normalized path first, so the sessions moved
+      // below always reference a project that exists.
+      // Every row stores the folder name as its custom name, so a name that
+      // differs from it is a rename the user made, and wins.
+      const names = [kept, ...lost].map((row) => row.custom_project_name?.trim()).filter((name): name is string => Boolean(name));
+      updateKept.run(
+        key,
+        names.find((name) => name !== path.basename(key)) ?? names[0] ?? null,
+        rows.some((row) => row.isStarred) ? 1 : 0,
+        rows.every((row) => row.isArchived) ? 1 : 0,
+        kept.project_id,
+      );
+      moveSessions.run(key, kept.project_path);
+      for (const row of lost) {
+        console.log(`Running migration: merging project ${row.project_path} into ${key}`);
+        moveSessions.run(key, row.project_path);
+        if (hasDrafts) {
+          const lostScope = `project:${row.project_id}`;
+          const keptScope = `project:${kept.project_id}`;
+          moveDraft.run(keptScope, lostScope, keptScope);
+          deleteDrafts.run(lostScope);
+        }
+        deleteProject.run(row.project_id);
+      }
+    }
+    // Sessions whose path had no project row of its own.
+    for (const { project_path } of sessionPaths) {
+      const key = normalizeProjectPath(project_path);
+      if (key && key !== project_path) {
+        moveSessions.run(key, project_path);
+      }
+    }
+  })();
+};
+
 export const runMigrations = (db: Database) => {
   try {
     const usersTableInfo = db.prepare('PRAGMA table_info(users)').all() as { name: string }[];
@@ -534,6 +636,7 @@ export const runMigrations = (db: Database) => {
     addSessionEffortColumn(db);
     addForkedFromSessionIdColumn(db);
     ensureProjectsForSessionPaths(db);
+    mergeProjectsWithSameNormalizedPath(db);
     db.exec(SCHEDULED_MESSAGES_TABLE_SCHEMA_SQL);
 
     db.exec('CREATE INDEX IF NOT EXISTS idx_session_ids_lookup ON sessions(session_id)');
