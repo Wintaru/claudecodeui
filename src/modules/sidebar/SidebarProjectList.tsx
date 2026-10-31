@@ -6,7 +6,7 @@ import { getPageTitle } from '@/shared/utils';
 import SidebarProjectItem from '@/modules/sidebar/SidebarProjectItem';
 import SidebarProjectsState from '@/modules/sidebar/SidebarProjectsState';
 import { nestWorktreeProjects } from '@/modules/sidebar/utils/sidebarProjectFormatting';
-import { readFoldedWorktreeRepoIds, writeFoldedWorktreeRepoIds } from '@/modules/sidebar/utils/sidebarStoredPreferences';
+import { readUnfoldedWorktreeRepoIds, writeUnfoldedWorktreeRepoIds } from '@/modules/sidebar/utils/sidebarStoredPreferences';
 
 
 /** Rendered by SidebarContent to list the filtered projects, delegating each row to SidebarProjectItem. */
@@ -73,9 +73,10 @@ export default function SidebarProjectList({
   const rows = useMemo(() => nestWorktreeProjects(filteredProjects), [filteredProjects]);
   // The list receives the search result, not the search text: fewer rows means a search is narrowing it.
   const isSearching = filteredProjects.length !== projects.length;
-  const [foldedRepoIds, setFoldedRepoIds] = useState<ReadonlySet<string>>(readFoldedWorktreeRepoIds);
+  // Repos start folded; this holds the ones the user opened.
+  const [unfoldedRepoIds, setUnfoldedRepoIds] = useState<ReadonlySet<string>>(readUnfoldedWorktreeRepoIds);
   const toggleRepoFold = useCallback((projectId: string) => {
-    setFoldedRepoIds((previous) => {
+    setUnfoldedRepoIds((previous) => {
       const next = new Set(previous);
       if (next.has(projectId)) {
         next.delete(projectId);
@@ -87,8 +88,8 @@ export default function SidebarProjectList({
   }, []);
 
   useEffect(() => {
-    writeFoldedWorktreeRepoIds(foldedRepoIds);
-  }, [foldedRepoIds]);
+    writeUnfoldedWorktreeRepoIds(unfoldedRepoIds);
+  }, [unfoldedRepoIds]);
 
   const showProjects = !isLoading && projects.length > 0 && filteredProjects.length > 0;
 
@@ -101,7 +102,7 @@ export default function SidebarProjectList({
               // busy or waiting for the user, and never while a search runs.
               if (
                 parentProjectId
-                && foldedRepoIds.has(parentProjectId)
+                && !unfoldedRepoIds.has(parentProjectId)
                 && !isSearching
                 && project.projectId !== selectedProject?.projectId
                 && !getProjectSessions(project).some((session) => (
@@ -186,7 +187,7 @@ export default function SidebarProjectList({
             if (worktreeCount === 0) {
               return <Fragment key={project.projectId}>{item}</Fragment>;
             }
-            const isFolded = foldedRepoIds.has(project.projectId);
+            const isFolded = !unfoldedRepoIds.has(project.projectId);
             return (
               <Fragment key={project.projectId}>
                 {item}
