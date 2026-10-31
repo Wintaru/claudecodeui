@@ -130,6 +130,8 @@ export type Project = {
   fullPath: string;
   path?: string;
   isStarred?: boolean;
+  /** For a git worktree, the path of its main checkout; the sidebar nests it there. */
+  worktreeOf?: string | null;
   sessions?: ProjectSession[];
   sessionMeta?: ProjectSessionMeta;
   taskmaster?: ProjectTaskmasterInfo;

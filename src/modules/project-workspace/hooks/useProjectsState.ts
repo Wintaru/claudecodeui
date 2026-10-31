@@ -170,6 +170,7 @@ const projectsHaveChanges = (
       nextProject.displayName !== prevProject.displayName ||
       nextProject.fullPath !== prevProject.fullPath ||
       Boolean(nextProject.isStarred) !== Boolean(prevProject.isStarred) ||
+      (nextProject.worktreeOf ?? null) !== (prevProject.worktreeOf ?? null) ||
       serialize(nextProject.sessionMeta) !== serialize(prevProject.sessionMeta) ||
       serialize(nextProject.sessions) !== serialize(prevProject.sessions) ||
       serialize(nextProject.taskmaster) !== serialize(prevProject.taskmaster)
@@ -376,6 +377,7 @@ const projectFromRegistration = (project: Project): Project => ({
   fullPath: project.fullPath || project.path || '',
   displayName: project.displayName,
   isStarred: project.isStarred,
+  worktreeOf: project.worktreeOf ?? null,
   sessions: project.sessions ?? [],
   sessionMeta: project.sessionMeta ?? { hasMore: false, total: countLoadedProjectSessions(project) },
   taskmaster: project.taskmaster,

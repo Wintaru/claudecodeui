@@ -1,9 +1,12 @@
-import { useEffect } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
+import { ChevronDown, ChevronRight } from 'lucide-react';
 
 import type { SidebarProjectListProps } from '@/shared/types';
 import { getPageTitle } from '@/shared/utils';
 import SidebarProjectItem from '@/modules/sidebar/SidebarProjectItem';
 import SidebarProjectsState from '@/modules/sidebar/SidebarProjectsState';
+import { nestWorktreeProjects } from '@/modules/sidebar/utils/sidebarProjectFormatting';
+import { readFoldedWorktreeRepoIds, writeFoldedWorktreeRepoIds } from '@/modules/sidebar/utils/sidebarStoredPreferences';
 
 
 /** Rendered by SidebarContent to list the filtered projects, delegating each row to SidebarProjectItem. */
@@ -67,13 +70,46 @@ export default function SidebarProjectList({
     document.title = pageTitle;
   }, [pageTitle]);
 
+  const rows = useMemo(() => nestWorktreeProjects(filteredProjects), [filteredProjects]);
+  // The list receives the search result, not the search text: fewer rows means a search is narrowing it.
+  const isSearching = filteredProjects.length !== projects.length;
+  const [foldedRepoIds, setFoldedRepoIds] = useState<ReadonlySet<string>>(readFoldedWorktreeRepoIds);
+  const toggleRepoFold = useCallback((projectId: string) => {
+    setFoldedRepoIds((previous) => {
+      const next = new Set(previous);
+      if (next.has(projectId)) {
+        next.delete(projectId);
+      } else {
+        next.add(projectId);
+      }
+      return next;
+    });
+  }, []);
+
+  useEffect(() => {
+    writeFoldedWorktreeRepoIds(foldedRepoIds);
+  }, [foldedRepoIds]);
+
   const showProjects = !isLoading && projects.length > 0 && filteredProjects.length > 0;
 
   return (
       <div className="pb-safe-area-inset-bottom md:space-y-1">
         {!showProjects
           ? state
-          : filteredProjects.map((project) => {
+          : rows.map(({ project, parentProjectId, worktreeCount }) => {
+              // A folded repo hides its worktrees, but never one that is open,
+              // busy or waiting for the user, and never while a search runs.
+              if (
+                parentProjectId
+                && foldedRepoIds.has(parentProjectId)
+                && !isSearching
+                && project.projectId !== selectedProject?.projectId
+                && !getProjectSessions(project).some((session) => (
+                  activeSessions.has(session.id) || attentionSessionIds.has(session.id)
+                ))
+              ) {
+                return null;
+              }
               // Both renames are resolved here rather than inside the row, so
               // every other row is handed the same scalars on each keystroke and
               // its memo boundary holds.
@@ -93,9 +129,8 @@ export default function SidebarProjectList({
 
               // React key + per-project state lookups all use the DB `projectId`
               // so they remain stable across renames and session changes.
-              return (
+              const item = (
               <SidebarProjectItem
-                key={project.projectId}
                 project={project}
                 selectedProject={selectedProject}
                 selectedSession={selectedSession}
@@ -139,6 +174,34 @@ export default function SidebarProjectList({
                 onDeleteSelectedSessions={onDeleteSelectedSessions}
                 t={t}
               />
+            );
+
+            if (parentProjectId) {
+              return (
+                <div key={project.projectId} className="ml-3 border-l border-border/60 pl-1">
+                  {item}
+                </div>
+              );
+            }
+            if (worktreeCount === 0) {
+              return <Fragment key={project.projectId}>{item}</Fragment>;
+            }
+            const isFolded = foldedRepoIds.has(project.projectId);
+            return (
+              <Fragment key={project.projectId}>
+                {item}
+                <button
+                  type="button"
+                  onClick={() => toggleRepoFold(project.projectId)}
+                  aria-expanded={!isFolded}
+                  className="ml-3 flex items-center gap-1 rounded px-2 py-0.5 text-[11px] text-muted-foreground hover:bg-accent/60 hover:text-foreground"
+                >
+                  {isFolded
+                    ? <ChevronRight className="h-3 w-3" aria-hidden />
+                    : <ChevronDown className="h-3 w-3" aria-hidden />}
+                  {t('projects.worktreeCount', { count: worktreeCount, defaultValue: '{{count}} worktrees' })}
+                </button>
+              </Fragment>
             );
           })}
     </div>

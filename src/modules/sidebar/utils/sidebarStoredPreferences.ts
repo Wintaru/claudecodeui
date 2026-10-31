@@ -30,6 +30,26 @@ export const readLegacyStarredProjectIds = (): string[] => {
   }
 };
 
+const FOLDED_WORKTREE_REPOS_STORAGE_KEY = 'cloudcli-folded-worktree-repos';
+
+/** The repos whose worktree rows the user folded away, by project id. */
+export const readFoldedWorktreeRepoIds = (): Set<string> => {
+  try {
+    const parsed: unknown = JSON.parse(localStorage.getItem(FOLDED_WORKTREE_REPOS_STORAGE_KEY) ?? '[]');
+    return new Set(Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === 'string') : []);
+  } catch {
+    return new Set();
+  }
+};
+
+export const writeFoldedWorktreeRepoIds = (projectIds: ReadonlySet<string>): void => {
+  try {
+    localStorage.setItem(FOLDED_WORKTREE_REPOS_STORAGE_KEY, JSON.stringify([...projectIds]));
+  } catch {
+    // Storage unavailable: the fold still works for this page load.
+  }
+};
+
 /**
  * Clears the legacy localStorage stars key after migration to backend completes.
  */
