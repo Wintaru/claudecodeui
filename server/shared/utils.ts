@@ -309,6 +309,7 @@ function shouldUseWindowsPathNormalization(inputPath: string): boolean {
  * - trim whitespace
  * - strip Windows long-path prefixes (`\\?\` and `\\?\UNC\`)
  * - normalize path separators and dot segments
+ * - lower-case a Windows drive letter, which tools spell either way
  * - trim trailing separators except for filesystem roots
  */
 export function normalizeProjectPath(inputPath: string): string {
@@ -324,7 +325,7 @@ export function normalizeProjectPath(inputPath: string): string {
   const withoutLongPrefix = stripWindowsLongPathPrefix(trimmed);
   const useWindowsPathRules = shouldUseWindowsPathNormalization(withoutLongPrefix);
   const normalized = useWindowsPathRules
-    ? path.win32.normalize(withoutLongPrefix)
+    ? path.win32.normalize(withoutLongPrefix).replace(/^[A-Z](?=:)/, (driveLetter) => driveLetter.toLowerCase())
     : path.posix.normalize(withoutLongPrefix);
 
   if (!normalized) {
