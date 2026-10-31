@@ -236,6 +236,8 @@ export function useChatSessionState({
    * time, a scroll-up inside that window is silently undone.
    */
   const isUserScrolledUpRef = useRef(false);
+  /** The last scrollTop seen or written, so handleScroll can tell a move up from page growth. */
+  const lastScrollTopRef = useRef(0);
   const isLoadingMoreRef = useRef(false);
   const allMessagesLoadedRef = useRef(false);
   const topLoadLockRef = useRef(false);
@@ -452,6 +454,7 @@ export function useChatSessionState({
     const container = scrollContainerRef.current;
     if (!container) return;
     container.scrollTop = container.scrollHeight;
+    lastScrollTopRef.current = container.scrollTop;
   }, []);
 
   const scrollToBottomAndReset = useCallback(() => {
@@ -535,11 +538,17 @@ export function useChatSessionState({
     const container = scrollContainerRef.current;
     if (!container) return;
 
-    const nearBottom = isNearBottom();
+    // Only a move up leaves the bottom. A streamed reply grows the page under a
+    // fixed scrollTop, and the event of our own scroll to the bottom can be
+    // handled after that growth, so distance from the bottom alone is not
+    // the user scrolling away.
+    const movedUp = container.scrollTop < lastScrollTopRef.current;
+    lastScrollTopRef.current = container.scrollTop;
+    const scrolledUp = isNearBottom() ? false : movedUp || isUserScrolledUpRef.current;
     // Set the ref now: a deferred scroll-to-bottom timer can fire before the
     // effect that mirrors the state into it runs.
-    isUserScrolledUpRef.current = !nearBottom;
-    setIsUserScrolledUp(!nearBottom);
+    isUserScrolledUpRef.current = scrolledUp;
+    setIsUserScrolledUp(scrolledUp);
     scrollPositionRef.current = {
       height: container.scrollHeight,
       top: container.scrollTop,
@@ -600,6 +609,7 @@ export function useChatSessionState({
       container.scrollTop = isUserScrolledUp
         ? scrollPositionRef.current.top
         : container.scrollHeight;
+      lastScrollTopRef.current = container.scrollTop;
     }
   }, [chatMessages.length, isActive, isUserScrolledUp]);
 
@@ -627,6 +637,7 @@ export function useChatSessionState({
     topLoadLockRef.current = false;
     pendingScrollRestoreRef.current = null;
     wasNearTopRef.current = false;
+    lastScrollTopRef.current = scrollContainerRef.current?.scrollTop ?? 0;
     setIsUserScrolledUp(false);
   }, [selectedProject?.projectId, selectedSession?.id]);
 
@@ -655,6 +666,7 @@ export function useChatSessionState({
     const tick = () => {
       if (!pendingInitialScrollRef.current || !scrollContainerRef.current) return;
       container.scrollTop = container.scrollHeight;
+      lastScrollTopRef.current = container.scrollTop;
       if (container.scrollHeight === lastHeight) {
         stableCount++;
       } else {

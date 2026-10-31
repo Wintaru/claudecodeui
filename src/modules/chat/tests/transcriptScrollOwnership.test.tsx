@@ -275,6 +275,86 @@ describe('deferred scroll-to-bottom', () => {
   });
 });
 
+describe('scroll events', () => {
+  /** Like createContainer, but the content can grow under a fixed scrollTop, as a streamed reply does. */
+  function createGrowingContainer(scrollHeight: number, clientHeight: number) {
+    const element = document.createElement('div');
+    const writes: number[] = [];
+    const state = { scrollHeight, scrollTop: scrollHeight - clientHeight };
+
+    Object.defineProperty(element, 'scrollHeight', { get: () => state.scrollHeight });
+    Object.defineProperty(element, 'clientHeight', { get: () => clientHeight });
+    Object.defineProperty(element, 'scrollTop', {
+      get: () => state.scrollTop,
+      set: (next: number) => {
+        state.scrollTop = Math.min(next, state.scrollHeight - clientHeight);
+        writes.push(next);
+      },
+    });
+
+    return { element: element as HTMLDivElement, writes, state };
+  }
+
+  async function renderAtBottom() {
+    const messages = new Map<string, NormalizedMessage[]>([
+      [SESSION_A, [buildMessage(0, '2026-01-01T00:00:00.000Z')]],
+    ]);
+    const store = createStore(messages);
+    const rendered = await renderChatSessionState({ session: { id: SESSION_A } as ProjectSession, store });
+    const container = createGrowingContainer(5000, 500);
+    (rendered.result.current.scrollContainerRef as { current: HTMLDivElement | null }).current = container.element;
+    // The event of the first scroll to the bottom, which the app always sees.
+    await act(async () => {
+      await rendered.result.current.handleScroll();
+    });
+
+    const addMessage = () => {
+      const current = messages.get(SESSION_A)!;
+      messages.set(SESSION_A, [...current, buildMessage(current.length, `2026-01-01T00:00:0${current.length}.000Z`)]);
+      act(() => {
+        rendered.rerender({ session: { id: SESSION_A } as ProjectSession });
+      });
+    };
+
+    return { ...rendered, container, addMessage };
+  }
+
+  it('keeps following when a scroll event lands after the content grew', async () => {
+    const { result, container, addMessage } = await renderAtBottom();
+
+    // A long reply grows the page by 800px. The scroll event of the last
+    // scroll to the bottom is handled only now, so the view looks 800px up.
+    container.state.scrollHeight += 800;
+    await act(async () => {
+      await result.current.handleScroll();
+    });
+    assert.equal(result.current.isUserScrolledUp, false, 'growth alone must not count as scrolling up');
+
+    container.writes.length = 0;
+    addMessage();
+    act(() => {
+      vi.advanceTimersByTime(200);
+    });
+    expect(container.writes).toContain(container.state.scrollHeight);
+  });
+
+  it('stops following when the user scrolls up, and follows again at the bottom', async () => {
+    const { result, container } = await renderAtBottom();
+
+    container.state.scrollTop -= 300;
+    await act(async () => {
+      await result.current.handleScroll();
+    });
+    assert.equal(result.current.isUserScrolledUp, true);
+
+    container.state.scrollTop = container.state.scrollHeight - 500;
+    await act(async () => {
+      await result.current.handleScroll();
+    });
+    assert.equal(result.current.isUserScrolledUp, false);
+  });
+});
+
 describe('search jump ownership', () => {
   it('does not follow the user into the next session', { timeout: 20_000 }, async () => {
     const messages = new Map<string, NormalizedMessage[]>([
