@@ -78,6 +78,17 @@ export const expireAuthSession = (): void => {
   }
 };
 
+/**
+ * Ends the session after a request sent with `sentToken` was rejected, unless
+ * another token was stored while it was in flight. That rejection says nothing
+ * about the newer token.
+ */
+export const expireAuthSessionSentWith = (sentToken: string | null): void => {
+  if (localStorage.getItem('auth-token') === sentToken) {
+    expireAuthSession();
+  }
+};
+
 export const getStoredAuthToken = (): string | null => {
   const token = localStorage.getItem('auth-token');
   if (token && isAuthTokenExpired(token)) {

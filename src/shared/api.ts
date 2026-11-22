@@ -1,5 +1,5 @@
 import {
-  expireAuthSession,
+  expireAuthSessionSentWith,
   getStoredAuthToken,
   storeAuthToken,
 } from '@/shared/authToken';
@@ -52,7 +52,7 @@ export const authenticatedFetch = (
     // its stored status (typically 200), not the 304 from the wire, so the
     // header alone says nothing about the current request.
     if (response.status === 401 && response.headers.get('X-Auth-Error')) {
-      expireAuthSession();
+      expireAuthSessionSentWith(token);
     }
     return response;
   });
