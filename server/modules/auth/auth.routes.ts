@@ -1,7 +1,10 @@
 import express from 'express';
 import type { RequestHandler } from 'express';
 
+import { AppError } from '@/shared/utils.js';
+
 import type { createAuthService } from './auth.service.js';
+import { isLocalPageRequest } from './local-page-request.js';
 
 type AuthenticatedRequest = express.Request & { user?: unknown };
 
@@ -36,6 +39,20 @@ export function createAuthRouter(
     try {
       const body = req.body as { username?: unknown; password?: unknown };
       res.json(await service.login(body.username, body.password));
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.post('/local-session', async (req, res, next) => {
+    try {
+      if (!isLocalPageRequest(req.headers)) {
+        throw new AppError('Automatic sign-in is only for pages on this computer', {
+          code: 'AUTH_NOT_LOCAL_PAGE',
+          statusCode: 403,
+        });
+      }
+      res.json(await service.startLocalSession());
     } catch (error) {
       next(error);
     }
