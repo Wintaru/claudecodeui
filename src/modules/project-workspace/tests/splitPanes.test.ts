@@ -185,6 +185,13 @@ test('a sidebar choice that is already open moves the focus to it instead of ope
   act(() => { isShownInSplit = result.current.showInFocusedPane('main'); });
   assert.equal(isShownInSplit, false, 'the main pane already shows it');
   assert.equal(result.current.focusedSplitSessionId, null);
+
+  // With the main pane focused, a split conversation is focused where it is,
+  // not moved into the main pane over the main pane's conversation.
+  act(() => { isShownInSplit = result.current.showInFocusedPane('b'); });
+  assert.equal(isShownInSplit, true);
+  assert.deepEqual(result.current.splitSessionIds, ['a', 'b']);
+  assert.equal(result.current.focusedSplitSessionId, 'b');
 });
 
 test('a new main pane conversation moves the focus back to the main pane', () => {

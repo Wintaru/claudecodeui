@@ -86,10 +86,16 @@ export function useSplitPanes({ mainSessionId, navigate, isMobile }: UseSplitPan
   }, []);
 
   /**
-   * Shows a conversation chosen from the sidebar in the focused split pane.
-   * Returns false when the main pane has focus, so the caller selects it there.
+   * Shows a conversation chosen from the sidebar in the split view: one already
+   * in a split pane gets the focus, so the main pane keeps its conversation, and
+   * any other fills the focused split pane. Returns false when the main pane has
+   * focus, so the caller selects it there.
    */
   const showInFocusedPane = useCallback((sessionId: string): boolean => {
+    if (splitSessionIdsRef.current.includes(sessionId)) {
+      setLastFocusedSplitSessionId(sessionId);
+      return true;
+    }
     const focusedId = focusedSplitSessionIdRef.current;
     if (!focusedId || sessionId === mainSessionIdRef.current) {
       setLastFocusedSplitSessionId(null);
