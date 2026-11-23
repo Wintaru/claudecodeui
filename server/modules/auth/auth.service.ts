@@ -7,13 +7,19 @@ type AuthUser = {
 
 type AuthLoginUser = AuthUser & { password_hash: string };
 
+export type AutoSignInSetting =
+  | { enabled: false }
+  | { enabled: true; defaultUsername: string; createUnusablePassword(): string };
+
 type AuthDependencies = {
   users: {
     hasUsers(): boolean;
     createUser(username: string, passwordHash: string): AuthUser;
     getUserByUsername(username: string): AuthLoginUser | undefined;
+    getFirstUser(): AuthUser | undefined;
     updateLastLogin(userId: number): void;
   };
+  autoSignIn: AutoSignInSetting;
   transaction: {
     begin(): void;
     commit(): void;
@@ -40,11 +46,39 @@ function isUniqueConstraintError(error: unknown): boolean {
  * transaction, and token dependencies.
  */
 export function createAuthService(dependencies: AuthDependencies) {
+  const { autoSignIn } = dependencies;
+
   return {
     getStatus() {
       return {
-        needsSetup: !dependencies.users.hasUsers(),
+        needsSetup: !autoSignIn.enabled && !dependencies.users.hasUsers(),
         isAuthenticated: false,
+        autoSignIn: autoSignIn.enabled,
+      };
+    },
+
+    async startLocalSession() {
+      if (!autoSignIn.enabled) {
+        throw new AppError('Automatic sign-in is off', {
+          code: 'AUTH_AUTO_SIGN_IN_DISABLED',
+          statusCode: 404,
+        });
+      }
+
+      let user = dependencies.users.getFirstUser();
+      if (!user) {
+        const passwordHash = await dependencies.hashPassword(autoSignIn.createUnusablePassword());
+        // No await between the second read and the insert, so two first
+        // requests cannot both insert.
+        user = dependencies.users.getFirstUser()
+          ?? dependencies.users.createUser(autoSignIn.defaultUsername, passwordHash);
+      }
+
+      dependencies.users.updateLastLogin(numericUserId(user.id));
+      return {
+        success: true,
+        user: { id: user.id, username: user.username },
+        token: dependencies.generateToken(user),
       };
     },
 

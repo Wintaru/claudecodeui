@@ -1,5 +1,5 @@
 import {
-  expireAuthSession,
+  expireAuthSessionSentWith,
   getStoredAuthToken,
   storeAuthToken,
 } from '@/shared/authToken';
@@ -11,6 +11,8 @@ import { readVoiceConfig, voiceConfigHeaders } from '@/shared/voiceConfig';
 export type ApiRequestOptions = Omit<RequestInit, 'headers'> & {
   headers?: Record<string, string>;
 };
+
+const LOCAL_SESSION_TIMEOUT_MS = 15_000;
 
 // Utility function for authenticated API calls
 export const authenticatedFetch = (
@@ -52,7 +54,7 @@ export const authenticatedFetch = (
     // its stored status (typically 200), not the 304 from the wire, so the
     // header alone says nothing about the current request.
     if (response.status === 401 && response.headers.get('X-Auth-Error')) {
-      expireAuthSession();
+      expireAuthSessionSentWith(token);
     }
     return response;
   });
@@ -210,6 +212,11 @@ export const api = {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username, password }),
+    }),
+    // Callers share one in-flight request, so a hung one must still settle.
+    localSession: () => fetch('/api/auth/local-session', {
+      method: 'POST',
+      signal: AbortSignal.timeout(LOCAL_SESSION_TIMEOUT_MS),
     }),
     refresh: () => post('/api/auth/refresh'),
     user: () => get('/api/auth/user'),

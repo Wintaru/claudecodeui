@@ -148,6 +148,7 @@ Environment Variables:
   DATABASE_PATH       Set custom database location
   CLAUDE_CLI_PATH     Set custom Claude CLI path
   CONTEXT_WINDOW      Fallback context window size (default: 160000)
+  LOCAL_AUTO_SIGN_IN  Set to true to skip the sign-in page (needs HOST=127.0.0.1)
 
 Documentation:
   ${dependencies.packageMetadata.homepage || 'https://github.com/siteboon/claudecodeui'}

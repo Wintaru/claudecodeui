@@ -174,6 +174,26 @@ test('an auth error on the response ends the session', async () => {
   assert.equal(localStorage.getItem('auth-token'), null);
 });
 
+test('an auth error for a token that was replaced in flight keeps the new token', async () => {
+  localStorage.setItem('auth-token', liveToken());
+  const replacement = liveToken().replace('signature', 'replacement');
+  let expiries = 0;
+  const onExpired = () => {
+    expiries += 1;
+  };
+  window.addEventListener(AUTH_SESSION_EXPIRED_EVENT, onExpired);
+  vi.stubGlobal('fetch', vi.fn(async () => {
+    localStorage.setItem('auth-token', replacement);
+    return new Response('{}', { status: 401, headers: { 'X-Auth-Error': 'invalid' } });
+  }));
+
+  await (await loadFetch(false))('/api/projects');
+
+  window.removeEventListener(AUTH_SESSION_EXPIRED_EVENT, onExpired);
+  assert.equal(expiries, 0);
+  assert.equal(localStorage.getItem('auth-token'), replacement);
+});
+
 test('an auth error replayed by a cached response does not end the session', async () => {
   const live = liveToken();
   localStorage.setItem('auth-token', live);

@@ -43,6 +43,9 @@ import type {
  */
 export const IS_PLATFORM = process.env.VITE_IS_PLATFORM === 'true';
 
+/** The address the server listens on. Auth reads it to allow automatic sign-in only on a loopback address. */
+export const SERVER_BIND_HOST = process.env.HOST || '0.0.0.0';
+
 // ---------------------------
 //----------------- NORMALIZED MESSAGE HELPER INPUT TYPES ------------
 /**

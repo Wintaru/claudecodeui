@@ -38,7 +38,12 @@ export default defineConfig(({ mode }) => {
       host,
       port: parseInt(env.VITE_PORT) || 5173,
       proxy: {
-        '/api': `http://${proxyHost}:${serverPort}`,
+        // Keep the browser's Host: automatic sign-in checks that it matches the
+        // page's Origin, and the string form would rewrite it (changeOrigin).
+        '/api': {
+          target: `http://${proxyHost}:${serverPort}`,
+          changeOrigin: false
+        },
         '/ws': {
           target: `ws://${proxyHost}:${serverPort}`,
           ws: true
