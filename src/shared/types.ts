@@ -1566,6 +1566,22 @@ export type SessionSelectOptions = {
   inMainPane?: boolean;
 };
 
+/**
+ * A conversation chosen in the sidebar while the split view shows, held until
+ * the user says where it opens. The pane to replace is fixed when the prompt
+ * opens, so a pane that closes meanwhile cannot redirect "Replace" to another.
+ */
+export type PaneReplacementPrompt = {
+  session: ProjectSession;
+  options?: SessionSelectOptions;
+  /** The conversation the choice would take off the screen. */
+  replacedSessionId: string;
+  replacedTitle: string;
+};
+
+/** The answer to the pane replacement prompt: open the conversation in a new pane, replace the focused pane's conversation, or do nothing. */
+export type PaneReplacementChoice = 'newPane' | 'replace' | 'cancel';
+
 /** The conversation a chat pane's context panel describes. */
 export type SessionContextTarget = {
   project: Project;

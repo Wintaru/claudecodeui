@@ -86,6 +86,24 @@ export function useSplitPanes({ mainSessionId, navigate, isMobile }: UseSplitPan
   }, []);
 
   /**
+   * The conversation that showing `sessionId` with showInFocusedPane would take
+   * off the screen in the split view: the focused split pane's, else the main
+   * pane's. Null outside the split view, for a conversation already on screen,
+   * and for an empty main pane with focus.
+   */
+  const conversationReplacedBy = useCallback((sessionId: string): string | null => {
+    const shownSplitSessionIds = splitSessionIdsRef.current;
+    if (
+      shownSplitSessionIds.length === 0
+      || shownSplitSessionIds.includes(sessionId)
+      || sessionId === mainSessionIdRef.current
+    ) {
+      return null;
+    }
+    return focusedSplitSessionIdRef.current ?? mainSessionIdRef.current;
+  }, []);
+
+  /**
    * Shows a conversation chosen from the sidebar in the split view: one already
    * in a split pane gets the focus, so the main pane keeps its conversation, and
    * any other fills the focused split pane. Returns false when the main pane has
@@ -151,6 +169,7 @@ export function useSplitPanes({ mainSessionId, navigate, isMobile }: UseSplitPan
     isSplitFull,
     focusedSplitSessionId,
     focusPane,
+    conversationReplacedBy,
     showInFocusedPane,
     openSessionInSplit,
     closeSplitPane,

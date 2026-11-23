@@ -8,11 +8,14 @@ import type { ServerEvent,
   LoadingProgress,
   Project,
   ProjectSession,IsSessionProcessing,
+  PaneReplacementChoice,
+  PaneReplacementPrompt,
   SessionSelectOptions,
   SidebarSplitViewActions } from '@/shared/types';
 import { mergeProjectSelectionMetadata } from '@/modules/project-workspace/utils/projectSelectionMetadata';
 import { MAX_SPLIT_PANES, useSplitPanes } from '@/modules/project-workspace/hooks/useSplitPanes';
 import { readSelectedProvider } from '@/shared/selectedProvider';
+import { getSessionTitle } from '@/shared/utils';
 
 type UseProjectsStateArgs = {
   sessionId?: string;
@@ -116,6 +119,9 @@ export type SplitPaneTarget = {
 const projectIdentity = (project: Project | null) => (
   project && [project.projectId, project.path, project.fullPath, project.displayName]
 );
+
+/** Whether a conversation chosen on this tab shows in the chat panes: the tasks and browser tabs switch to the chat first. */
+const isChatTab = (tab: AppTab): boolean => tab === 'chat' || tab === 'tasks' || tab === 'browser';
 
 const isSameSplitPaneTarget = (previous: SplitPaneTarget, next: SplitPaneTarget): boolean => (
   serialize(previous.session) === serialize(next.session)
@@ -536,6 +542,7 @@ export function useProjectsState({
     isSplitFull,
     focusedSplitSessionId,
     focusPane,
+    conversationReplacedBy,
     showInFocusedPane,
     openSessionInSplit,
     closeSplitPane,
@@ -545,6 +552,7 @@ export function useProjectsState({
   // Per split session: bumped when its transcript changes on disk while no run
   // is active here, the same signal `externalMessageUpdate` is for the main pane.
   const [splitExternalUpdates, setSplitExternalUpdates] = useState<Record<string, number>>({});
+  const [paneReplacementPrompt, setPaneReplacementPrompt] = useState<PaneReplacementPrompt | null>(null);
 
   /** Whether a session shows in the main pane or in a split pane. */
   const isSessionOnScreen = useCallback((targetSessionId: string) => (
@@ -1169,14 +1177,21 @@ export function useProjectsState({
     [isMobile, navigate],
   );
 
-  const handleSessionSelect = useCallback(
-    (session: ProjectSession, options?: SessionSelectOptions) => {
-      clearSessionAttention(session.id);
-
-      const isChatShown = activeTab === 'chat' || activeTab === 'tasks' || activeTab === 'browser';
+  /** Marks a conversation read and brings the chat panes back from the tasks or browser tab. */
+  const prepareChatForSession = useCallback(
+    (targetSessionId: string) => {
+      clearSessionAttention(targetSessionId);
       if (activeTab === 'tasks' || activeTab === 'browser') {
         setActiveTab('chat');
       }
+    },
+    [activeTab, clearSessionAttention],
+  );
+
+  const showSelectedSession = useCallback(
+    (session: ProjectSession, options?: SessionSelectOptions) => {
+      const isChatShown = isChatTab(activeTab);
+      prepareChatForSession(session.id);
 
       // With a split pane focused and the chat on screen, the conversation
       // replaces that pane and the main pane keeps its own. On another tab the
@@ -1201,7 +1216,31 @@ export function useProjectsState({
 
       navigate(`/session/${session.id}`);
     },
-    [activeTab, clearSessionAttention, isMobile, navigate, selectedProject?.projectId, showInFocusedPane],
+    [activeTab, isMobile, navigate, prepareChatForSession, selectedProject?.projectId, showInFocusedPane],
+  );
+
+  // In the split view a sidebar click can take a conversation off the screen,
+  // so the user chooses between a new pane and that conversation's pane first.
+  const handleSessionSelect = useCallback(
+    (session: ProjectSession, options?: SessionSelectOptions) => {
+      const replacedSessionId = isChatTab(activeTab) && !options?.inMainPane
+        ? conversationReplacedBy(session.id)
+        : null;
+      if (!replacedSessionId) {
+        showSelectedSession(session, options);
+        return;
+      }
+      const replacedSession = selectedSessionRef.current?.id === replacedSessionId
+        ? selectedSessionRef.current
+        : splitPaneTargets.find((target) => target.sessionId === replacedSessionId)?.session ?? null;
+      setPaneReplacementPrompt({
+        session,
+        options,
+        replacedSessionId,
+        replacedTitle: replacedSession ? getSessionTitle(replacedSession) : 'the selected pane\'s conversation',
+      });
+    },
+    [activeTab, conversationReplacedBy, showSelectedSession, splitPaneTargets],
   );
 
   const handleNewSession = useCallback(
@@ -1243,6 +1282,42 @@ export function useProjectsState({
       setActiveTab('chat');
     },
     [clearSessionAttention, openSessionInSplit],
+  );
+
+  const resolvePaneReplacement = useCallback(
+    (choice: PaneReplacementChoice) => {
+      const prompt = paneReplacementPrompt;
+      setPaneReplacementPrompt(null);
+      if (!prompt || choice === 'cancel') {
+        return;
+      }
+      const { session, options, replacedSessionId } = prompt;
+      if (choice === 'newPane') {
+        handleOpenSessionInSplit(session.id);
+        return;
+      }
+      // Replace acts on the pane named in the prompt. If that pane closed or
+      // changed while the dialog was open, nothing is replaced.
+      if (splitSessionIdsRef.current.includes(replacedSessionId)) {
+        prepareChatForSession(session.id);
+        replaceSplitPane(replacedSessionId, session.id);
+        focusPane(session.id);
+        return;
+      }
+      if (replacedSessionId === sessionId) {
+        showSelectedSession(session, { ...options, inMainPane: true });
+      }
+    },
+    [
+      focusPane,
+      handleOpenSessionInSplit,
+      paneReplacementPrompt,
+      prepareChatForSession,
+      replaceSplitPane,
+      sessionId,
+      showSelectedSession,
+      splitSessionIdsRef,
+    ],
   );
 
   const handleSidebarRefresh = useCallback(async () => {
@@ -1476,6 +1551,8 @@ export function useProjectsState({
     focusedSplitSessionId,
     focusPane,
     handleOpenSessionInSplit,
+    paneReplacementPrompt,
+    resolvePaneReplacement,
     closeSplitPane,
     closeMainPane,
     replaceSplitPane,

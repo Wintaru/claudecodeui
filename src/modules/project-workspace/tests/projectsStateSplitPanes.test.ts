@@ -168,7 +168,13 @@ test('a sidebar click with a split pane focused fills that pane and leaves the m
   navigate.mockClear();
 
   act(() => result.current.handleSessionSelect(otherSession));
+  assert.equal(result.current.paneReplacementPrompt?.session.id, 'other-session');
+  assert.equal(result.current.paneReplacementPrompt?.replacedSessionId, 'split-session');
+  assert.equal(result.current.paneReplacementPrompt?.replacedTitle, 'Split');
+  assert.deepEqual(result.current.splitSessionIds, ['split-session'], 'nothing is replaced before the answer');
+  act(() => result.current.resolvePaneReplacement('replace'));
 
+  assert.equal(result.current.paneReplacementPrompt, null);
   assert.deepEqual(result.current.splitSessionIds, ['other-session']);
   assert.equal(result.current.focusedSplitSessionId, 'other-session');
   assert.equal(result.current.selectedSession?.id, 'main-session');
@@ -185,6 +191,129 @@ test('a sidebar click with a split pane focused fills that pane and leaves the m
   navigate.mockClear();
   act(() => result.current.handleSessionSelect(mainSession));
   assert.deepEqual(navigate.mock.calls, [['/session/main-session']]);
+  assert.equal(result.current.paneReplacementPrompt, null);
+});
+
+test('in the split view, a sidebar click asks before it replaces a conversation', async () => {
+  const navigate = vi.fn();
+  projectsResponse.mockResolvedValue({ ok: true, json: async () => [project] });
+  const { useProjectsState } = await import('@/modules/project-workspace/hooks/useProjectsState');
+  const { result } = renderHook(() =>
+    useProjectsState({
+      sessionId: 'main-session',
+      navigate,
+      subscribe: () => () => {},
+      isMobile: false,
+      isSessionProcessing: () => false,
+    }),
+  );
+  await waitFor(() => {
+    assert.equal(result.current.selectedSession?.id, 'main-session');
+  });
+
+  // One pane: a click switches the conversation with no question.
+  act(() => result.current.handleSessionSelect(otherSession));
+  // Compared as a boolean: an assertion on the value itself would narrow it to null for the rest of the test.
+  assert.equal(result.current.paneReplacementPrompt === null, true);
+  assert.deepEqual(navigate.mock.calls, [['/session/other-session']]);
+
+  // The mock navigate does not change the address, so the main pane still
+  // shows main-session.
+  assert.equal(result.current.selectedSession?.id, 'main-session');
+  act(() => result.current.handleOpenSessionInSplit('split-session'));
+  act(() => result.current.setActiveTab('tasks'));
+  navigate.mockClear();
+
+  // Cancel leaves every pane, the tab, and the unread marks as they were.
+  act(() => result.current.handleSessionSelect(otherSession));
+  assert.equal(result.current.paneReplacementPrompt?.replacedSessionId, 'main-session');
+  assert.equal(result.current.paneReplacementPrompt?.replacedTitle, 'Main');
+  act(() => result.current.resolvePaneReplacement('cancel'));
+  assert.equal(result.current.paneReplacementPrompt, null);
+  assert.equal(result.current.activeTab, 'tasks');
+  assert.deepEqual(result.current.splitSessionIds, ['split-session']);
+  assert.deepEqual(navigate.mock.calls, []);
+
+  // Replace with the main pane focused replaces the main pane's conversation.
+  act(() => result.current.handleSessionSelect(otherSession));
+  act(() => result.current.resolvePaneReplacement('replace'));
+  assert.equal(result.current.activeTab, 'chat');
+  assert.deepEqual(navigate.mock.calls, [['/session/other-session']]);
+  assert.deepEqual(result.current.splitSessionIds, ['split-session']);
+  navigate.mockClear();
+
+  // A new pane keeps the conversations already on screen.
+  act(() => result.current.handleSessionSelect(otherSession));
+  act(() => result.current.resolvePaneReplacement('newPane'));
+  assert.deepEqual(result.current.splitSessionIds, ['split-session', 'other-session']);
+  assert.deepEqual(navigate.mock.calls, []);
+
+  // A conversation already on screen gets the focus and needs no question.
+  act(() => result.current.handleSessionSelect(splitSession));
+  assert.equal(result.current.paneReplacementPrompt, null);
+  assert.equal(result.current.focusedSplitSessionId, 'split-session');
+  assert.deepEqual(result.current.splitSessionIds, ['split-session', 'other-session']);
+  assert.deepEqual(navigate.mock.calls, []);
+});
+
+test('replace does nothing when the named pane closed while the dialog was open', async () => {
+  projectsResponse.mockResolvedValue({ ok: true, json: async () => [project] });
+  const { useProjectsState } = await import('@/modules/project-workspace/hooks/useProjectsState');
+  const navigate = vi.fn();
+  const { result } = renderHook(() =>
+    useProjectsState({
+      sessionId: 'main-session',
+      navigate,
+      subscribe: () => () => {},
+      isMobile: false,
+      isSessionProcessing: () => false,
+    }),
+  );
+  await waitFor(() => {
+    assert.equal(result.current.selectedSession?.id, 'main-session');
+  });
+  act(() => result.current.handleOpenSessionInSplit('split-session'));
+  act(() => result.current.focusPane('split-session'));
+  navigate.mockClear();
+
+  act(() => result.current.handleSessionSelect(otherSession));
+  assert.equal(result.current.paneReplacementPrompt?.replacedSessionId, 'split-session');
+  act(() => result.current.closeSplitPane('split-session'));
+  act(() => result.current.resolvePaneReplacement('replace'));
+
+  assert.deepEqual(result.current.splitSessionIds, []);
+  assert.equal(result.current.selectedSession?.id, 'main-session');
+  assert.deepEqual(navigate.mock.calls, [], 'the main pane, now focused, is not replaced instead');
+});
+
+test('an empty main pane with focus takes a sidebar click without a question', async () => {
+  projectsResponse.mockResolvedValue({ ok: true, json: async () => [project] });
+  const { useProjectsState } = await import('@/modules/project-workspace/hooks/useProjectsState');
+  const navigate = vi.fn();
+  const { result, rerender } = renderHook(
+    ({ sessionId }: { sessionId: string | undefined }) =>
+      useProjectsState({
+        sessionId,
+        navigate,
+        subscribe: () => () => {},
+        isMobile: false,
+        isSessionProcessing: () => false,
+      }),
+    { initialProps: { sessionId: 'main-session' as string | undefined } },
+  );
+  await waitFor(() => {
+    assert.equal(result.current.selectedSession?.id, 'main-session');
+  });
+  act(() => result.current.handleOpenSessionInSplit('split-session'));
+  // "New session" leaves the address without a session; the split pane stays.
+  rerender({ sessionId: undefined });
+  navigate.mockClear();
+
+  act(() => result.current.handleSessionSelect(otherSession));
+
+  assert.equal(result.current.paneReplacementPrompt, null);
+  assert.deepEqual(navigate.mock.calls, [['/session/other-session']]);
+  assert.deepEqual(result.current.splitSessionIds, ['split-session']);
 });
 
 test('a change on disk to a split session signals its pane', async () => {

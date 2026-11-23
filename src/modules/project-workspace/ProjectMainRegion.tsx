@@ -3,6 +3,7 @@ import { memo, useCallback } from 'react';
 import { useProjectMainState } from '@/modules/project-workspace/context/ProjectsStateContext';
 import type { SessionEstablishedContext, SessionNavigationOptions,ProjectWorkspaceShellProps } from '@/shared/types';
 import WorkspaceMain from '@/modules/project-workspace/WorkspaceMain';
+import PaneReplacementDialog from '@/modules/project-workspace/PaneReplacementDialog';
 
 /** Rendered by ProjectWorkspaceShell to bind this module's project state to WorkspaceMain. */
 function ProjectMainRegion({
@@ -32,6 +33,9 @@ function ProjectMainRegion({
     replaceSplitPane,
     focusedSplitSessionId,
     focusPane,
+    isSplitFull,
+    paneReplacementPrompt,
+    resolvePaneReplacement,
   } = useProjectMainState();
 
   const handleOpenSidebar = useCallback(() => {
@@ -57,32 +61,39 @@ function ProjectMainRegion({
   }, [refreshProjectsSilently]);
 
   return (
-    <WorkspaceMain
-      selectedProject={selectedProject}
-      selectedSession={selectedSession}
-      activeTab={activeTab}
-      setActiveTab={setActiveTab}
-      ws={ws}
-      sendMessage={sendMessage}
-      isMobile={isMobile}
-      onMenuClick={handleOpenSidebar}
-      isLoading={isLoadingProjects}
-      onNavigateToSession={handleNavigateToSession}
-      onSessionEstablished={handleSessionEstablished}
-      onShowSettings={openSettings}
-      externalMessageUpdate={externalMessageUpdate}
-      newSessionTrigger={newSessionTrigger}
-      onProjectSelect={handleProjectSelect}
-      onProjectsRefresh={handleProjectsRefresh}
-      onRenameSession={renameSession}
-      splitPaneTargets={splitPaneTargets}
-      splitExternalUpdates={splitExternalUpdates}
-      onCloseSplitPane={closeSplitPane}
-      onCloseMainPane={closeMainPane}
-      onReplaceSplitPane={replaceSplitPane}
-      focusedSplitSessionId={focusedSplitSessionId}
-      onFocusPane={focusPane}
-    />
+    <>
+      <WorkspaceMain
+        selectedProject={selectedProject}
+        selectedSession={selectedSession}
+        activeTab={activeTab}
+        setActiveTab={setActiveTab}
+        ws={ws}
+        sendMessage={sendMessage}
+        isMobile={isMobile}
+        onMenuClick={handleOpenSidebar}
+        isLoading={isLoadingProjects}
+        onNavigateToSession={handleNavigateToSession}
+        onSessionEstablished={handleSessionEstablished}
+        onShowSettings={openSettings}
+        externalMessageUpdate={externalMessageUpdate}
+        newSessionTrigger={newSessionTrigger}
+        onProjectSelect={handleProjectSelect}
+        onProjectsRefresh={handleProjectsRefresh}
+        onRenameSession={renameSession}
+        splitPaneTargets={splitPaneTargets}
+        splitExternalUpdates={splitExternalUpdates}
+        onCloseSplitPane={closeSplitPane}
+        onCloseMainPane={closeMainPane}
+        onReplaceSplitPane={replaceSplitPane}
+        focusedSplitSessionId={focusedSplitSessionId}
+        onFocusPane={focusPane}
+      />
+      <PaneReplacementDialog
+        prompt={paneReplacementPrompt}
+        isSplitFull={isSplitFull}
+        onResolve={resolvePaneReplacement}
+      />
+    </>
   );
 }
 
