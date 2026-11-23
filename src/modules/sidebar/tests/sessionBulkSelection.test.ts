@@ -560,16 +560,37 @@ test('ticking a row of another project starts that project over', () => {
   assert.deepEqual([...(result.current.sessionSelection?.sessionIds ?? [])], ['other']);
 });
 
-test('the selection is dropped when the project collapses or the tab changes', () => {
+test('expanding or collapsing a project keeps the selection', () => {
   const { result } = renderController();
 
   act(() => {
     result.current.toggleSessionSelected('project-1', 's1');
   });
   act(() => {
+    result.current.toggleProject('project-2');
+  });
+  act(() => {
     result.current.toggleProject('project-1');
   });
-  assert.equal(result.current.sessionSelection, null, 'collapsing takes the ticked rows off screen');
+
+  assert.equal(result.current.sessionSelection?.projectId, 'project-1');
+  assert.deepEqual([...(result.current.sessionSelection?.sessionIds ?? [])], ['s1']);
+});
+
+test('opening another project beside the selecting one keeps its rows ticked', () => {
+  const { result } = renderController(vi.fn(), { ...IDLE, keepProjectsExpanded: true });
+
+  act(() => result.current.toggleProject('project-1'));
+  act(() => result.current.toggleSessionSelected('project-1', 's1'));
+  act(() => result.current.toggleProject('project-2'));
+
+  assert.equal(result.current.isProjectExpanded('project-1'), true);
+  assert.equal(result.current.sessionSelection?.projectId, 'project-1');
+  assert.deepEqual([...(result.current.sessionSelection?.sessionIds ?? [])], ['s1']);
+});
+
+test('the selection is dropped when the tab changes', () => {
+  const { result } = renderController();
 
   act(() => {
     result.current.toggleSessionSelected('project-1', 's1');
