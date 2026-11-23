@@ -750,10 +750,8 @@ export function useSidebarController({
   // `projectId` as their identifier after the migration.
   const toggleProject = useCallback(
     (projectId: string) => {
-      // Collapsing or expanding takes the ticked rows off screen, so the
-      // selection they belong to is dropped with them.
-      setSessionSelection(null);
-
+      // The selection is kept, so a project's ticks come back when it opens
+      // again. Only leaving the tab clears it (changeSearchMode).
       if (searchMode === 'running') {
         setCollapsedRunningProjects((prev) => {
           const next = new Set(prev);
