@@ -33,6 +33,7 @@ type AuthSessionPayload = {
 
 type AuthStatusPayload = {
   needsSetup?: boolean;
+  autoSignIn?: boolean;
 };
 
 type AuthUserPayload = {
@@ -64,6 +65,26 @@ async function parseJsonSafely<T>(response: Response): Promise<T | null> {
   try {
     return (await response.json()) as T;
   } catch {
+    return null;
+  }
+}
+
+type LocalSession = {
+  token: string;
+  user: AuthUser;
+};
+
+async function fetchLocalSession(): Promise<LocalSession | null> {
+  try {
+    const response = await api.auth.localSession();
+    const payload = await parseJsonSafely<AuthSessionPayload>(response);
+    if (!response.ok || !payload?.token || !payload.user) {
+      console.error('[Auth] Automatic sign-in failed:', readApiErrorMessage(payload) ?? response.status);
+      return null;
+    }
+    return { token: payload.token, user: payload.user };
+  } catch (caughtError) {
+    console.error('[Auth] Automatic sign-in failed:', caughtError);
     return null;
   }
 }
@@ -141,6 +162,33 @@ export function AuthProvider({ children }: AuthProviderProps) {
     await checkOnboardingStatus();
   }, [checkOnboardingStatus]);
 
+  // ProtectedRoute shows the workspace as soon as there is a user, so the
+  // onboarding status is settled before the user is published; otherwise a
+  // user who still has to onboard would see the workspace mount for a whole
+  // round trip before Onboarding replaced it. The token is stored first
+  // because that request reads it from storage.
+  const publishSession = useCallback(async (nextUser: AuthUser, nextToken: string) => {
+    persistToken(nextToken);
+    await checkOnboardingStatus();
+    setUser(nextUser);
+    setToken(nextToken);
+    setNeedsSetup(false);
+  }, [checkOnboardingStatus]);
+
+  // Set from /api/auth/status. When the server signs local pages in by
+  // itself, an expired or missing token is replaced instead of asking for a
+  // password.
+  const isAutoSignInRef = useRef(false);
+
+  // Several requests can expire together; they share one local-session call.
+  const localSessionRequestRef = useRef<Promise<LocalSession | null> | null>(null);
+  const requestLocalSession = useCallback((): Promise<LocalSession | null> => {
+    localSessionRequestRef.current ??= fetchLocalSession().finally(() => {
+      localSessionRequestRef.current = null;
+    });
+    return localSessionRequestRef.current;
+  }, []);
+
   const refreshSession = useCallback(async () => {
     if (IS_PLATFORM || !token || !user) {
       return;
@@ -171,18 +219,29 @@ export function AuthProvider({ children }: AuthProviderProps) {
         setToken(nextToken);
       }
     };
-    const handleSessionExpired = () => {
+    const handleSessionExpired = async () => {
+      // The session is kept until the new token arrives, so the workspace
+      // does not unmount behind a sign-in form for one round trip.
+      const localSession = isAutoSignInRef.current ? await requestLocalSession() : null;
+      if (localSession) {
+        persistToken(localSession.token);
+        setToken(localSession.token);
+        return;
+      }
       clearSession();
       setError(t(AUTH_ERROR_MESSAGES.sessionExpired));
     };
+    const handleSessionExpiredEvent = () => {
+      void handleSessionExpired();
+    };
 
     window.addEventListener(AUTH_TOKEN_REFRESHED_EVENT, handleTokenRefreshed);
-    window.addEventListener(AUTH_SESSION_EXPIRED_EVENT, handleSessionExpired);
+    window.addEventListener(AUTH_SESSION_EXPIRED_EVENT, handleSessionExpiredEvent);
     return () => {
       window.removeEventListener(AUTH_TOKEN_REFRESHED_EVENT, handleTokenRefreshed);
-      window.removeEventListener(AUTH_SESSION_EXPIRED_EVENT, handleSessionExpired);
+      window.removeEventListener(AUTH_SESSION_EXPIRED_EVENT, handleSessionExpiredEvent);
     };
-  }, [clearSession, t]);
+  }, [clearSession, requestLocalSession, t]);
 
   // The startup check below needs `t` only for its failure message.
   // react-i18next gives `t` a new identity on every language change, so
@@ -194,13 +253,43 @@ export function AuthProvider({ children }: AuthProviderProps) {
     tRef.current = t;
   }, [t]);
 
+  // Reads the stored token instead of depending on `token` state: the
+  // bootstrap below flips `isLoading`, which swaps the whole app for the
+  // loading screen, so it must run once on mount and not again on every
+  // X-Refreshed-Token rotation (each one remounted the workspace, #1269).
+  const restoreStoredSession = useCallback(async (): Promise<boolean> => {
+    if (!readStoredToken()) {
+      return false;
+    }
+
+    const userResponse = await api.auth.user();
+    const userPayload = userResponse.ok ? await parseJsonSafely<AuthUserPayload>(userResponse) : null;
+    if (!userPayload?.user) {
+      // Automatic sign-in brings the same user straight back, so only the
+      // token goes: clearSession would also drop drafts the server never got.
+      if (isAutoSignInRef.current) {
+        clearStoredToken();
+      } else {
+        clearSession();
+      }
+      return false;
+    }
+
+    setUser(userPayload.user);
+    await checkOnboardingStatus();
+    return true;
+  }, [checkOnboardingStatus, clearSession]);
+
   const checkAuthStatus = useCallback(async () => {
     try {
       setIsLoading(true);
       setError(null);
 
       const statusResponse = await api.auth.status();
-      const statusPayload = await parseJsonSafely<AuthStatusPayload>(statusResponse);
+      const statusPayload = statusResponse.ok
+        ? await parseJsonSafely<AuthStatusPayload>(statusResponse)
+        : null;
+      isAutoSignInRef.current = statusPayload?.autoSignIn === true;
 
       if (statusPayload?.needsSetup) {
         setNeedsSetup(true);
@@ -209,35 +298,34 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
       setNeedsSetup(false);
 
-      // Read the stored token instead of depending on `token` state: this
-      // bootstrap flips `isLoading`, which swaps the whole app for the loading
-      // screen, so it must run once on mount and not again on every
-      // X-Refreshed-Token rotation (each one remounted the workspace, #1269).
-      if (!readStoredToken()) {
+      if (await restoreStoredSession()) {
         return;
       }
 
-      const userResponse = await api.auth.user();
-      if (!userResponse.ok) {
-        clearSession();
+      // Without the status, the app cannot tell whether to sign in by itself,
+      // so say so instead of showing a password form that may have no password.
+      if (!statusResponse.ok) {
+        setError(tRef.current(AUTH_ERROR_MESSAGES.authStatusCheckFailed));
         return;
       }
 
-      const userPayload = await parseJsonSafely<AuthUserPayload>(userResponse);
-      if (!userPayload?.user) {
-        clearSession();
+      if (!isAutoSignInRef.current) {
         return;
       }
 
-      setUser(userPayload.user);
-      await checkOnboardingStatus();
+      const localSession = await requestLocalSession();
+      if (localSession) {
+        await publishSession(localSession.user, localSession.token);
+      } else {
+        setError(tRef.current(AUTH_ERROR_MESSAGES.authStatusCheckFailed));
+      }
     } catch (caughtError) {
       console.error('[Auth] Auth status check failed:', caughtError);
       setError(tRef.current(AUTH_ERROR_MESSAGES.authStatusCheckFailed));
     } finally {
       setIsLoading(false);
     }
-  }, [checkOnboardingStatus, clearSession]);
+  }, [publishSession, requestLocalSession, restoreStoredSession]);
 
   useEffect(() => {
     if (IS_PLATFORM) {
@@ -285,19 +373,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, [refreshSession, token, user]);
-
-  // ProtectedRoute shows the workspace as soon as there is a user, so the
-  // onboarding status is settled before the user is published; otherwise a
-  // user who still has to onboard would see the workspace mount for a whole
-  // round trip before Onboarding replaced it. The token is stored first
-  // because that request reads it from storage.
-  const publishSession = useCallback(async (nextUser: AuthUser, nextToken: string) => {
-    persistToken(nextToken);
-    await checkOnboardingStatus();
-    setUser(nextUser);
-    setToken(nextToken);
-    setNeedsSetup(false);
-  }, [checkOnboardingStatus]);
 
   const login = useCallback<AuthContextValue['login']>(
     async (username, password) => {

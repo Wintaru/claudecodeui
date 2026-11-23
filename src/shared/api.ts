@@ -12,6 +12,8 @@ export type ApiRequestOptions = Omit<RequestInit, 'headers'> & {
   headers?: Record<string, string>;
 };
 
+const LOCAL_SESSION_TIMEOUT_MS = 15_000;
+
 // Utility function for authenticated API calls
 export const authenticatedFetch = (
   url: string,
@@ -210,6 +212,11 @@ export const api = {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username, password }),
+    }),
+    // Callers share one in-flight request, so a hung one must still settle.
+    localSession: () => fetch('/api/auth/local-session', {
+      method: 'POST',
+      signal: AbortSignal.timeout(LOCAL_SESSION_TIMEOUT_MS),
     }),
     refresh: () => post('/api/auth/refresh'),
     user: () => get('/api/auth/user'),
