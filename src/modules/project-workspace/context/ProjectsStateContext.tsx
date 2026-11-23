@@ -34,6 +34,9 @@ type ProjectMainState = Pick<
   | 'replaceSplitPane'
   | 'focusedSplitSessionId'
   | 'focusPane'
+  | 'isSplitFull'
+  | 'paneReplacementPrompt'
+  | 'resolvePaneReplacement'
 >;
 
 type ProjectCommandState = Pick<
@@ -113,9 +116,15 @@ export function ProjectsStateProvider({
       replaceSplitPane: state.replaceSplitPane,
       focusedSplitSessionId: state.focusedSplitSessionId,
       focusPane: state.focusPane,
+      isSplitFull: state.isSplitFull,
+      paneReplacementPrompt: state.paneReplacementPrompt,
+      resolvePaneReplacement: state.resolvePaneReplacement,
     }),
     [
       state.activeTab,
+      state.isSplitFull,
+      state.paneReplacementPrompt,
+      state.resolvePaneReplacement,
       state.focusedSplitSessionId,
       state.focusPane,
       state.closeMainPane,

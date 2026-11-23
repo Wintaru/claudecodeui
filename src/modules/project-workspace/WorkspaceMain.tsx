@@ -51,6 +51,20 @@ type WorkspaceMainProps = {
   onFocusPane: (splitSessionId: string | null) => void;
 };
 
+/** The grid for the split view: one row up to three panes, then two rows; four panes make a two-by-two square. */
+function splitGridClassName(paneCount: number): string {
+  if (paneCount <= 2) {
+    return 'grid-cols-2 grid-rows-1';
+  }
+  if (paneCount === 3) {
+    return 'grid-cols-3 grid-rows-1';
+  }
+  if (paneCount === 4) {
+    return 'grid-cols-2 grid-rows-2';
+  }
+  return 'grid-cols-3 grid-rows-2';
+}
+
 /** Rendered by ProjectMainRegion to show the selected project's active tab: chat, files, shell, git, tasks, browser or a plugin. */
 function WorkspaceMain({
   selectedProject,
@@ -95,12 +109,10 @@ function WorkspaceMain({
     () => new Set(isSplitView ? splitPaneTargets.map((target) => target.sessionId) : []),
     [isSplitView, splitPaneTargets],
   );
-  // One row of full-height columns, so each pane keeps room for its context panel.
-  const splitGridColumnsClassName = splitPaneTargets.length >= 2 ? 'grid-cols-3' : 'grid-cols-2';
   const chatLayoutClassName = activeTab !== 'chat'
     ? 'hidden'
     : isSplitView
-      ? `grid grid-rows-1 gap-1 p-1 ${splitGridColumnsClassName}`
+      ? `grid gap-1 p-1 ${splitGridClassName(splitPaneTargets.length + 1)}`
       : 'block';
   const shouldShowBrowserTab = browserUseEnabled;
   const handleMainPaneFocus = useCallback(() => onFocusPane(null), [onFocusPane]);

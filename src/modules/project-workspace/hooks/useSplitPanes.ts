@@ -3,8 +3,8 @@ import type { NavigateFunction } from 'react-router-dom';
 
 const SPLIT_PANES_STORAGE_KEY = 'cloudcli-split-panes';
 const NO_SPLIT_PANES: string[] = [];
-/** Panes beside the main one; with the main pane that makes three columns. */
-export const MAX_SPLIT_PANES = 2;
+/** Panes beside the main one; with the main pane that makes six, three columns by two rows. */
+export const MAX_SPLIT_PANES = 5;
 
 /** Read the stored split pane ids, tolerating missing, invalid or oversized storage. */
 function readStoredSplitSessionIds(): string[] {
@@ -86,10 +86,34 @@ export function useSplitPanes({ mainSessionId, navigate, isMobile }: UseSplitPan
   }, []);
 
   /**
-   * Shows a conversation chosen from the sidebar in the focused split pane.
-   * Returns false when the main pane has focus, so the caller selects it there.
+   * The conversation that showing `sessionId` with showInFocusedPane would take
+   * off the screen in the split view: the focused split pane's, else the main
+   * pane's. Null outside the split view, for a conversation already on screen,
+   * and for an empty main pane with focus.
+   */
+  const conversationReplacedBy = useCallback((sessionId: string): string | null => {
+    const shownSplitSessionIds = splitSessionIdsRef.current;
+    if (
+      shownSplitSessionIds.length === 0
+      || shownSplitSessionIds.includes(sessionId)
+      || sessionId === mainSessionIdRef.current
+    ) {
+      return null;
+    }
+    return focusedSplitSessionIdRef.current ?? mainSessionIdRef.current;
+  }, []);
+
+  /**
+   * Shows a conversation chosen from the sidebar in the split view: one already
+   * in a split pane gets the focus, so the main pane keeps its conversation, and
+   * any other fills the focused split pane. Returns false when the main pane has
+   * focus, so the caller selects it there.
    */
   const showInFocusedPane = useCallback((sessionId: string): boolean => {
+    if (splitSessionIdsRef.current.includes(sessionId)) {
+      setLastFocusedSplitSessionId(sessionId);
+      return true;
+    }
     const focusedId = focusedSplitSessionIdRef.current;
     if (!focusedId || sessionId === mainSessionIdRef.current) {
       setLastFocusedSplitSessionId(null);
@@ -145,6 +169,7 @@ export function useSplitPanes({ mainSessionId, navigate, isMobile }: UseSplitPan
     isSplitFull,
     focusedSplitSessionId,
     focusPane,
+    conversationReplacedBy,
     showInFocusedPane,
     openSessionInSplit,
     closeSplitPane,
