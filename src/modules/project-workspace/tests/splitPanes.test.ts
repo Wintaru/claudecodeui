@@ -8,7 +8,7 @@ import { MAX_SPLIT_PANES, useSplitPanes } from '@/modules/project-workspace/hook
 
 /**
  * The address names the main pane; the split list holds the other panes, never
- * the main session, at most three, and survives a page reload.
+ * the main session, at most five, and survives a page reload.
  */
 
 const STORAGE_KEY = 'cloudcli-split-panes';
@@ -45,15 +45,15 @@ test('never shows a session twice', () => {
   assert.deepEqual(result.current.splitSessionIds, ['other']);
 });
 
-test('holds at most two split panes', () => {
+test('holds at most five split panes, six with the main pane', () => {
   const { result } = renderSplitPanes('main');
 
-  for (const id of ['a', 'b', 'c', 'd']) {
+  for (const id of ['a', 'b', 'c', 'd', 'e', 'f', 'g']) {
     act(() => result.current.openSessionInSplit(id));
   }
 
   assert.equal(result.current.splitSessionIds.length, MAX_SPLIT_PANES);
-  assert.deepEqual(result.current.splitSessionIds, ['a', 'b']);
+  assert.deepEqual(result.current.splitSessionIds, ['a', 'b', 'c', 'd', 'e']);
   assert.equal(result.current.isSplitFull, true);
 });
 
@@ -96,8 +96,8 @@ test('a fork replaces the pane it came from', () => {
 });
 
 test('restores stored panes and ignores bad storage', () => {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(['a', 'a', 7, 'b', 'c']));
-  assert.deepEqual(renderSplitPanes('main').result.current.splitSessionIds, ['a', 'b']);
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(['a', 'a', 7, 'b', 'c', 'd', 'e', 'f']));
+  assert.deepEqual(renderSplitPanes('main').result.current.splitSessionIds, ['a', 'b', 'c', 'd', 'e']);
 
   localStorage.setItem(STORAGE_KEY, '{not json');
   assert.deepEqual(renderSplitPanes('main').result.current.splitSessionIds, []);
